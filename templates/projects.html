@@ -1,0 +1,471 @@
+{% extends 'dashboard_base.html' %}
+{% block page_title %}项目管理{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="card mb-4">
+    <div class="card-body">
+      <ul class="nav nav-tabs" id="projectTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" id="list-tab" data-bs-toggle="tab" data-bs-target="#list" type="button" role="tab">项目列表</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="add-tab" data-bs-toggle="tab" data-bs-target="#add" type="button" role="tab">添加项目</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="edit-tab" data-bs-toggle="tab" data-bs-target="#edit" type="button" role="tab">编辑项目</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="import-tab" data-bs-toggle="tab" data-bs-target="#import" type="button" role="tab">项目导入</button>
+        </li>
+      </ul>
+      <div class="tab-content" id="projectTabsContent">
+        <div class="tab-pane fade show active" id="list" role="tabpanel">
+          <div class="mt-4 mb-4">
+            <form method="get">
+              <div class="row mb-3 align-items-center">
+                <div class="col-md-1">
+                  <label for="query" class="form-label">项目名称</label>
+                </div>
+                <div class="col-md-5">
+                  <input type="text" class="form-control" id="query" name="query" value="{{ active_filters.query }}">
+                </div>
+                {% if is_admin %}
+                <div class="col-md-1">
+                  <label for="secondary_unit" class="form-label">二级单位</label>
+                </div>
+                <div class="col-md-5">
+                  <select class="form-select" id="secondary_unit" name="secondary_unit">
+                    <option value="">-- 所有 --</option>
+                    {% for unit in filter_options.secondary_units %}
+                    <option value="{{ unit }}" {{ 'selected' if active_filters.secondary_unit == unit else '' }}>{{ unit }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                {% else %}
+                <div class="col-md-1">
+                  <label class="form-label">二级单位</label>
+                </div>
+                <div class="col-md-5">
+                  <input type="text" class="form-control" value="{{ current_user.username }}" readonly>
+                  <input type="hidden" name="secondary_unit" value="{{ current_user.username }}">
+                </div>
+                {% endif %}
+              </div>
+              <div class="row mb-3">
+                <div class="col-md-12">
+                  <button type="button" class="btn btn-link" data-bs-toggle="collapse" data-bs-target="#advancedFilters">高级筛选</button>
+                </div>
+              </div>
+              <div class="collapse" id="advancedFilters">
+                <div class="row">
+                  <div class="col-md-4 mb-3">
+                    <label for="province" class="form-label">项目所在省份</label>
+                    <select class="form-select" id="province" name="province">
+                      <option value="">-- 所有 --</option>
+                      {% for item in filter_options.provinces %}
+                      <option value="{{ item }}" {{ 'selected' if active_filters.province == item else '' }}>{{ item }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label for="region" class="form-label">项目所在区域</label>
+                    <select class="form-select" id="region" name="region">
+                      <option value="">-- 所有 --</option>
+                      {% for item in filter_options.regions %}
+                      <option value="{{ item }}" {{ 'selected' if active_filters.region == item else '' }}>{{ item }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label for="power_type" class="form-label">电源品种</label>
+                    <select class="form-select" id="power_type" name="power_type">
+                      <option value="">-- 所有 --</option>
+                      {% for item in filter_options.power_types %}
+                      <option value="{{ item }}" {{ 'selected' if active_filters.power_type == item else '' }}>{{ item }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label for="investment_scope" class="form-label">项目投资口径</label>
+                    <select class="form-select" id="investment_scope" name="investment_scope">
+                      <option value="">-- 所有 --</option>
+                      {% for item in filter_options.investment_scopes %}
+                      <option value="{{ item }}" {{ 'selected' if active_filters.investment_scope == item else '' }}>{{ item }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label for="project_nature" class="form-label">项目性质</label>
+                    <select class="form-select" id="project_nature" name="project_nature">
+                      <option value="">-- 所有 --</option>
+                      {% for item in filter_options.project_natures %}
+                      <option value="{{ item }}" {{ 'selected' if active_filters.project_nature == item else '' }}>{{ item }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label for="is_uhv_support" class="form-label">是否特高压配套电源</label>
+                    <select class="form-select" id="is_uhv_support" name="is_uhv_support">
+                      <option value="">-- 所有 --</option>
+                      <option value="1" {{ 'selected' if active_filters.is_uhv_support == '1' else '' }}>是</option>
+                      <option value="0" {{ 'selected' if active_filters.is_uhv_support == '0' else '' }}>否</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label for="has_subsidy" class="form-label">是否含补贴</label>
+                    <select class="form-select" id="has_subsidy" name="has_subsidy">
+                      <option value="">-- 所有 --</option>
+                      <option value="1" {{ 'selected' if active_filters.has_subsidy == '1' else '' }}>是</option>
+                      <option value="0" {{ 'selected' if active_filters.has_subsidy == '0' else '' }}>否</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div class="mb-3">
+                <a href="{{ url_for('dashboard.projects') }}" class="btn btn-secondary">重置所有筛选</a>
+                <button type="submit" class="btn btn-primary">应用筛选</button>
+                <a href="{{ url_for('dashboard.export_projects') + '?' + request.query_string.decode() }}" class="btn btn-success float-end">导出Excel</a>
+              </div>
+            </form>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-striped">
+              <thead>
+                <tr>
+                  <th style="width: 80px;">项目ID</th>
+                  <th>项目名称</th>
+                  <th style="width: 150px;">二级单位</th>
+                  <th style="width: 150px;">装机容量(万千瓦)</th>
+                  <th style="width: 150px;">投产年份</th>
+                  <th style="width: 150px;">更新日期</th>
+                  <th style="width: 150px;">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for project in projects %}
+                <tr>
+                  <td>{{ project.id }}</td>
+                  <td>{{ project.project_name }}</td>
+                  <td>{{ project.secondary_unit }}</td>
+                  <td>{{ '%.2f'|format(project.capacity_mw) if project.capacity_mw is not none else '' }}</td>
+                  <td>{{ project.production_year or '' }}</td>
+                  <td>{{ project.last_updated_date.strftime('%Y-%m-%d') if project.last_updated_date }}</td>
+                  <td>
+                    <button class="btn btn-sm btn-primary" onclick="loadEditProject({{ project.id }})">查看/修改</button>
+                    <form method="post" action="{{ url_for('dashboard.delete_project', project_id=project.id) }}" style="display:inline;">
+                      <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('确定删除此项目？')">删除</button>
+                    </form>
+                  </td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="7">没有找到符合筛选条件的项目记录</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="tab-pane fade" id="import" role="tabpanel">
+          <div class="mt-4 mb-4">
+            <h4>从excel文件导入项目</h4>
+            <form method="post" enctype="multipart/form-data" action="{{ url_for('dashboard.import_excel') }}">
+              <div class="input-group">
+                <input type="file" class="form-control" id="file" name="file" accept=".xlsx,.xls">
+                <button type="submit" class="btn btn-primary">导入并更新</button>
+              </div>
+            </form>
+          </div>
+        </div>
+        <div class="tab-pane fade" id="add" role="tabpanel">
+          <div class="mt-4">
+            <form id="addForm" method="post" action="{{ url_for('dashboard.add_project') }}">
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="add_project_name" class="form-label">项目名称 *</label>
+                  <input type="text" class="form-control" id="add_project_name" name="project_name" required>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="add_company_name" class="form-label">公司名称</label>
+                  <input type="text" class="form-control" id="add_company_name" name="company_name">
+                </div>
+              </div>
+              <div class="row">
+                {% if is_admin %}
+                <div class="col-md-6 mb-3">
+                  <label for="add_secondary_unit" class="form-label">二级单位 *</label>
+                  <input type="text" class="form-control" id="add_secondary_unit" name="secondary_unit" required>
+                </div>
+                {% else %}
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">二级单位</label>
+                  <input type="text" class="form-control" value="{{ current_user.username }}" readonly>
+                  <input type="hidden" name="secondary_unit" value="{{ current_user.username }}">
+                </div>
+                {% endif %}
+                <div class="col-md-6 mb-3">
+                  <label for="add_secondary_unit_contact" class="form-label">二级单位联系人</label>
+                  <input type="text" class="form-control" id="add_secondary_unit_contact" name="secondary_unit_contact">
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <label for="add_province" class="form-label">项目所在省份</label>
+                  <input type="text" class="form-control" id="add_province" name="province">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="add_region" class="form-label">项目所在区域</label>
+                  <input type="text" class="form-control" id="add_region" name="region">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="add_investment_scope" class="form-label">项目投资口径</label>
+                  <input type="text" class="form-control" id="add_investment_scope" name="investment_scope">
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <label for="add_project_nature" class="form-label">项目性质</label>
+                  <input type="text" class="form-control" id="add_project_nature" name="project_nature">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="add_power_type" class="form-label">电源品种</label>
+                  <input type="text" class="form-control" id="add_power_type" name="power_type">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="add_capacity_mw" class="form-label">装机容量(万千瓦)</label>
+                  <input type="number" step="0.01" class="form-control" id="add_capacity_mw" name="capacity_mw">
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <label for="add_production_year" class="form-label">(预计)投产年份</label>
+                  <input type="number" class="form-control" id="add_production_year" name="production_year">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="add_production_month" class="form-label">(预计)投产月份</label>
+                  <input type="number" class="form-control" id="add_production_month" name="production_month">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="add_last_updated_date" class="form-label">核对及更新日期</label>
+                  <input type="date" class="form-control" id="add_last_updated_date" name="last_updated_date">
+                </div>
+              </div>
+              <div class="mb-3">
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="add_is_uhv_support" name="is_uhv_support">
+                  <label class="form-check-label" for="add_is_uhv_support">是否特高压配套电源</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="add_has_subsidy" name="has_subsidy">
+                  <label class="form-check-label" for="add_has_subsidy">是否含补贴</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="add_is_filed" name="is_filed">
+                  <label class="form-check-label" for="add_is_filed">是否建档立卡</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="add_is_beijing_registered" name="is_beijing_registered">
+                  <label class="form-check-label" for="add_is_beijing_registered">是否完成北交注册</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="add_is_guangzhou_registered" name="is_guangzhou_registered">
+                  <label class="form-check-label" for="add_is_guangzhou_registered">是否完成广交注册</label>
+                </div>
+              </div>
+              <button type="submit" class="btn btn-primary">保存项目</button>
+              <button type="button" class="btn btn-secondary" onclick="switchTab('list')">取消</button>
+            </form>
+          </div>
+        </div>
+        <div class="tab-pane fade" id="edit" role="tabpanel">
+          <div class="mt-4">
+            <form id="editForm" method="post" action="">
+              <input type="hidden" name="project_id" id="edit_project_id">
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="edit_project_name" class="form-label">项目名称 *</label>
+                  <input type="text" class="form-control" id="edit_project_name" name="project_name" required>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="edit_company_name" class="form-label">公司名称</label>
+                  <input type="text" class="form-control" id="edit_company_name" name="company_name">
+                </div>
+              </div>
+              <div class="row">
+                {% if is_admin %}
+                <div class="col-md-6 mb-3">
+                  <label for="edit_secondary_unit" class="form-label">二级单位 *</label>
+                  <input type="text" class="form-control" id="edit_secondary_unit" name="secondary_unit" required>
+                </div>
+                {% else %}
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">二级单位</label>
+                  <input type="text" class="form-control" value="{{ current_user.username }}" readonly>
+                  <input type="hidden" name="secondary_unit" value="{{ current_user.username }}">
+                </div>
+                {% endif %}
+                <div class="col-md-6 mb-3">
+                  <label for="edit_secondary_unit_contact" class="form-label">二级单位联系人</label>
+                  <input type="text" class="form-control" id="edit_secondary_unit_contact" name="secondary_unit_contact">
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <label for="edit_province" class="form-label">项目所在省份</label>
+                  <input type="text" class="form-control" id="edit_province" name="province">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="edit_region" class="form-label">项目所在区域</label>
+                  <input type="text" class="form-control" id="edit_region" name="region">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="edit_investment_scope" class="form-label">项目投资口径</label>
+                  <input type="text" class="form-control" id="edit_investment_scope" name="investment_scope">
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <label for="edit_project_nature" class="form-label">项目性质</label>
+                  <input type="text" class="form-control" id="edit_project_nature" name="project_nature">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="edit_power_type" class="form-label">电源品种</label>
+                  <input type="text" class="form-control" id="edit_power_type" name="power_type">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="edit_capacity_mw" class="form-label">装机容量(万千瓦)</label>
+                  <input type="number" step="0.01" class="form-control" id="edit_capacity_mw" name="capacity_mw">
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <label for="edit_production_year" class="form-label">(预计)投产年份</label>
+                  <input type="number" class="form-control" id="edit_production_year" name="production_year">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="edit_production_month" class="form-label">(预计)投产月份</label>
+                  <input type="number" class="form-control" id="edit_production_month" name="production_month">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label for="edit_last_updated_date" class="form-label">核对及更新日期</label>
+                  <input type="date" class="form-control" id="edit_last_updated_date" name="last_updated_date">
+                </div>
+              </div>
+              <div class="mb-3">
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="edit_is_uhv_support" name="is_uhv_support">
+                  <label class="form-check-label" for="edit_is_uhv_support">是否特高压配套电源</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="edit_has_subsidy" name="has_subsidy">
+                  <label class="form-check-label" for="edit_has_subsidy">是否含补贴</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="edit_is_filed" name="is_filed">
+                  <label class="form-check-label" for="edit_is_filed">是否建档立卡</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="edit_is_beijing_registered" name="is_beijing_registered">
+                  <label class="form-check-label" for="edit_is_beijing_registered">是否完成北交注册</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="edit_is_guangzhou_registered" name="is_guangzhou_registered">
+                  <label class="form-check-label" for="edit_is_guangzhou_registered">是否完成广交注册</label>
+                </div>
+              </div>
+              <button type="submit" class="btn btn-primary">保存项目</button>
+              <button type="button" class="btn btn-secondary" onclick="switchTab('list')">取消</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+function switchTab(tabId) {
+  new bootstrap.Tab(document.getElementById(tabId + '-tab')).show();
+}
+
+function loadEditProject(projectId) {
+  fetch('/dashboard/projects/get/' + projectId)
+    .then(response => {
+      if (!response.ok) {
+        if (response.status === 403) {
+          alert('您没有权限查看或修改此项目！');
+          return;
+        }
+        throw new Error('网络请求失败');
+      }
+      return response.json();
+    })
+    .then(data => {
+      if (!data) return;
+      // 清空编辑表单
+      document.getElementById('edit_project_id').value = '';
+      document.getElementById('edit_project_name').value = '';
+      // ... 清空其他字段 ...
+
+      // 填充数据
+      document.getElementById('edit_project_id').value = data.id;
+      document.getElementById('edit_project_name').value = data.project_name;
+      document.getElementById('edit_company_name').value = data.company_name || '';
+      // 只有管理员才有edit_secondary_unit字段
+      const secondaryUnitField = document.getElementById('edit_secondary_unit');
+      if (secondaryUnitField) {
+        secondaryUnitField.value = data.secondary_unit || '';
+      }
+      document.getElementById('edit_secondary_unit_contact').value = data.secondary_unit_contact || '';
+      document.getElementById('edit_province').value = data.province || '';
+      document.getElementById('edit_region').value = data.region || '';
+      document.getElementById('edit_investment_scope').value = data.investment_scope || '';
+      document.getElementById('edit_project_nature').value = data.project_nature || '';
+      document.getElementById('edit_power_type').value = data.power_type || '';
+      document.getElementById('edit_capacity_mw').value = data.capacity_mw || '';
+      document.getElementById('edit_production_year').value = data.production_year || '';
+      document.getElementById('edit_production_month').value = data.production_month || '';
+      document.getElementById('edit_last_updated_date').value = data.last_updated_date ? data.last_updated_date.split('T')[0] : '';
+      document.getElementById('edit_is_uhv_support').checked = data.is_uhv_support;
+      document.getElementById('edit_has_subsidy').checked = data.has_subsidy;
+      document.getElementById('edit_is_filed').checked = data.is_filed;
+      document.getElementById('edit_is_beijing_registered').checked = data.is_beijing_registered;
+      document.getElementById('edit_is_guangzhou_registered').checked = data.is_guangzhou_registered;
+
+      // 设置表单action
+      var baseUrl = '{{ url_for("dashboard.edit_project", project_id=0) }}'.replace('/0', '');
+      document.getElementById('editForm').action = baseUrl + '/' + projectId;
+
+      // 切换到编辑tab
+      switchTab('edit');
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      alert('加载项目信息失败，请稍后重试！');
+    });
+}
+
+document.getElementById('addForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  fetch(this.action, {
+    method: 'POST',
+    body: new FormData(this)
+  }).then(response => {
+    if (response.ok) {
+      location.reload();
+    }
+  });
+});
+
+document.getElementById('editForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  fetch(this.action, {
+    method: 'POST',
+    body: new FormData(this)
+  }).then(response => {
+    if (response.ok) {
+      location.reload();
+    }
+  });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,290 @@
+{% extends 'dashboard_base.html' %}
+{% block content %}
+<div class="container-fluid py-4" style="height: calc(100vh - 120px); display: flex; flex-direction: column;">
+  <!-- KPI Cards -->
+  <div class="row g-3" style="flex-shrink: 0;">
+    <div class="col-12 col-md-3">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <h6 class="text-muted mb-1">项目总数</h6>
+              <h3 class="mb-0">{{ total_projects or 0 }}</h3>
+            </div>
+            <span class="badge bg-primary">All</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-3">
+      <div class="card h-100">
+        <div class="card-body">
+          <h6 class="text-muted mb-1">累计核发量(万张)</h6>
+          <h3 class="mb-0">{{ (total_issued|default(0))|round(1) }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-3">
+      <div class="card h-100">
+        <div class="card-body">
+          <h6 class="text-muted mb-1">累计成交量(万张)</h6>
+          <h3 class="mb-0">{{ (total_sold|default(0))|round(1) }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-3">
+      <div class="card h-100">
+        <div class="card-body">
+          <h6 class="text-muted mb-1">平均成交单价(元/张)</h6>
+          <h3 class="mb-0">{{ (avg_price|default(0))|round(1) }}</h3>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trend Charts Row -->
+  <div class="row g-3 mt-1" style="flex: 1; min-height: 0;">
+    <div class="col-12 col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">月成交量</div>
+        <div class="card-body">
+          <canvas id="monthlyVolumeChart" height="200"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">月成交价</div>
+        <div class="card-body">
+          <canvas id="monthlyPriceChart" height="200"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Rankings Row -->
+  <div class="row g-3 mt-1" style="flex: 1; min-height: 0;">
+    <div class="col-12 col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">省份成交Top5</div>
+        <div class="card-body">
+          <ul class="list-group list-group-flush">
+            {% for item in top_provinces or [] %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <span>{{ item.name }}</span>
+              <span class="fw-bold">{{ (item.value or 0)|round(1) }} 万张</span>
+            </li>
+            {% else %}
+            <li class="list-group-item text-muted">暂无数据</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">二级单位成交Top5</div>
+        <div class="card-body">
+          <ul class="list-group list-group-flush">
+            {% for item in top_secondary_units or [] %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <span>{{ item.name }}</span>
+              <span class="fw-bold">{{ (item.value or 0)|round(1) }} 万张</span>
+            </li>
+            {% else %}
+            <li class="list-group-item text-muted">暂无数据</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const trendCtx = document.getElementById('trendChart');
+  const trendCtx2 = document.getElementById('trendChart2');
+  const labels = {{ (trend.labels or [])|tojson }};
+  const issued = {{ (trend.issued or [])|tojson }};
+  const sold = {{ (trend.sold or [])|tojson }};
+  
+  // 获取真实数据并初始化图表
+  fetch('/dashboard/api/dashboard_chart_data')
+    .then(response => response.json())
+    .then(data => {
+      // 处理月成交量数据
+      const volumeLabels = data.volume_data.map(item => {
+        const month = item.month.split('-')[1];
+        return month + '月';
+      });
+      const volume2023 = data.volume_data.map(item => item.data_2023);
+      const volume2024 = data.volume_data.map(item => item.data_2024);
+      const volume2025 = data.volume_data.map(item => item.data_2025);
+
+      // Monthly Volume Chart (Clustered Bar Chart)
+      const monthlyVolumeCtx = document.getElementById('monthlyVolumeChart');
+      if (monthlyVolumeCtx) {
+        new Chart(monthlyVolumeCtx, {
+          type: 'bar',
+          data: {
+            labels: volumeLabels,
+            datasets: [
+              {
+                label: '2023年生产',
+                data: volume2023,
+                backgroundColor: '#0d6efd',
+                borderColor: '#0d6efd',
+                borderWidth: 1
+              },
+              {
+                label: '2024年生产',
+                data: volume2024,
+                backgroundColor: '#198754',
+                borderColor: '#198754',
+                borderWidth: 1
+              },
+              {
+                label: '2025年生产',
+                data: volume2025,
+                backgroundColor: '#ffc107',
+                borderColor: '#ffc107',
+                borderWidth: 1
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'bottom'
+              },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + '张';
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                title: {
+                  display: true,
+                  text: '月份'
+                }
+              },
+              y: {
+                beginAtZero: true,
+                title: {
+                  display: true,
+                  text: '成交量（张）'
+                }
+              }
+            },
+            interaction: {
+              mode: 'index',
+              intersect: false
+            }
+          }
+        });
+      }
+
+      // 处理月成交价数据
+      const priceLabels = data.price_data.map(item => {
+        const month = item.month.split('-')[1];
+        return month + '月';
+      });
+      const price2023 = data.price_data.map(item => item.data_2023);
+      const price2024 = data.price_data.map(item => item.data_2024);
+      const price2025 = data.price_data.map(item => item.data_2025);
+      
+      // Monthly Price Chart (Line Chart)
+      const monthlyPriceCtx = document.getElementById('monthlyPriceChart');
+      if (monthlyPriceCtx) {
+        new Chart(monthlyPriceCtx, {
+          type: 'line',
+          data: {
+            labels: priceLabels,
+            datasets: [
+              {
+                label: '2023年生产',
+                data: price2023,
+                borderColor: '#0d6efd',
+                backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                tension: 0.25,
+                fill: false,
+                pointRadius: 4,
+                pointHoverRadius: 6
+              },
+              {
+                label: '2024年生产',
+                data: price2024,
+                borderColor: '#198754',
+                backgroundColor: 'rgba(25, 135, 84, 0.1)',
+                tension: 0.25,
+                fill: false,
+                pointRadius: 4,
+                pointHoverRadius: 6
+              },
+              {
+                label: '2025年生产',
+                data: price2025,
+                borderColor: '#ffc107',
+                backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                tension: 0.25,
+                fill: false,
+                pointRadius: 4,
+                pointHoverRadius: 6
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'bottom'
+              },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    return context.dataset.label + ': ' + context.parsed.y + '元/张';
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                title: {
+                  display: true,
+                  text: '月份'
+                }
+              },
+              y: {
+                beginAtZero: false,
+                title: {
+                  display: true,
+                  text: '成交价（元/张）'
+                }
+              }
+            },
+            interaction: {
+              mode: 'index',
+              intersect: false
+            }
+          }
+        });
+      }
+    })
+    .catch(error => {
+      console.error('获取图表数据失败:', error);
+      // 如果获取数据失败，显示错误信息或使用默认数据
+      alert('获取图表数据失败，请刷新页面重试');
+    });
+</script>
+{% endblock %}

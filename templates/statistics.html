@@ -1,0 +1,326 @@
+{% extends 'dashboard_base.html' %}
+{% block page_title %}聚合分析{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/element-plus.css') }}">
+<style>
+  /* 筛选区域布局与宽度控制 */
+  #filterForm.filters-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: .5rem;
+  }
+  #filterForm .field { flex: 0 1 auto; }
+  /* 聚合维度最大宽度为当前的 1/3（通过设置为原先宽度的 33% 上限来约束） */
+  #filterForm .dimension-field { max-width: 33%; min-width: 160px; }
+  /* 两个时间范围最大宽度为当前的 1/2（设置为 50% 上限） */
+  #filterForm .date-field { max-width: 50%; min-width: 220px; }
+  /* 使控件本身填满容器宽度 */
+  #filterForm .field .el-date-editor,
+  #filterForm .field select { width: 100%; }
+  /* 让按钮组不撑开宽度 */
+  #filterForm .actions { flex: 0 0 auto; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="card mb-3" style="position: relative; z-index: 10;">
+    <div class="card-body">
+      <form id="filterForm" method="get" class="filters-row">
+        <div class="field dimension-field">
+          <label class="form-label">聚合维度</label>
+          <select class="form-select" name="dimension">
+            <option value="省份" {% if dimension=='省份' %}selected{% endif %}>省份</option>
+            <option value="二级单位" {% if dimension=='二级单位' %}selected{% endif %}>二级单位</option>
+            <option value="电源品种" {% if dimension=='电源品种' %}selected{% endif %}>电源品种</option>
+            <option value="项目性质" {% if dimension=='项目性质' %}selected{% endif %}>项目性质</option>
+            <option value="所在区域" {% if dimension=='所在区域' %}selected{% endif %}>所在区域</option>
+            <option value="项目投资口径" {% if dimension=='项目投资口径' %}selected{% endif %}>项目投资口径</option>
+            <option value="装机容量(万千瓦)" {% if dimension=='装机容量(万千瓦)' %}selected{% endif %}>装机容量(万千瓦)</option>
+            <option value="是否特高压配套电源" {% if dimension=='是否特高压配套电源' %}selected{% endif %}>是否特高压配套电源</option>
+            <option value="是否含补贴" {% if dimension=='是否含补贴' %}selected{% endif %}>是否含补贴</option>
+            <option value="是否建档立卡" {% if dimension=='是否建档立卡' %}selected{% endif %}>是否建档立卡</option>
+            <option value="是否完成北交注册" {% if dimension=='是否完成北交注册' %}selected{% endif %}>是否完成北交注册</option>
+            <option value="是否完成广交注册" {% if dimension=='是否完成广交注册' %}selected{% endif %}>是否完成广交注册</option>
+          </select>
+        </div>
+        
+        <!-- 使用 Element Plus 范围选择器：电量生产时间（月范围） -->
+        <div class="field date-field">
+          <label class="form-label">电量生产时间</label>
+          <el-date-picker
+            v-model="productionRange"
+            type="monthrange"
+            range-separator="至"
+            start-placeholder="开始月份"
+            end-placeholder="结束月份"
+            value-format="YYYY-MM"
+            format="YYYY-MM"
+            unlink-panels="false"
+            style="width: 100%;"
+          ></el-date-picker>
+        </div>
+        
+        <!-- 使用 Element Plus 范围选择器：交易时间（日范围） -->
+        <div class="field date-field">
+          <label class="form-label">交易时间</label>
+          <el-date-picker
+            v-model="transactionRange"
+            type="daterange"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            value-format="YYYY-MM-DD"
+            format="YYYY-MM-DD"
+            unlink-panels="false"
+            style="width: 100%;"
+          ></el-date-picker>
+        </div>
+
+        <!-- 隐藏字段：提交给后端保持兼容 -->
+        <input type="hidden" name="start_date" :value="productionRange && productionRange.length===2 ? productionRange[0] : ''">
+        <input type="hidden" name="end_date" :value="productionRange && productionRange.length===2 ? productionRange[1] : ''">
+        <input type="hidden" name="transaction_start_date" :value="transactionRange && transactionRange.length===2 ? transactionRange[0] : ''">
+        <input type="hidden" name="transaction_end_date" :value="transactionRange && transactionRange.length===2 ? transactionRange[1] : ''">
+
+        <div class="actions">
+          <label class="form-label d-block">&nbsp;</label>
+          <button class="btn btn-primary">查询</button>
+          <a class="btn btn-outline-secondary" href="{{ url_for('dashboard.statistics') }}">重置</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 第一行：两张图表 -->
+  <div class="row g-3 mb-3">
+    <div class="col-12 col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">发行/成交对比图</div>
+        <div class="card-body">
+          <canvas id="summaryChart" height="400"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">成交量价图</div>
+        <div class="card-body">
+          <canvas id="volumePriceChart" height="400"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 第二行：聚合汇总表 -->
+  <div class="row g-3">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">聚合汇总表</div>
+        <div class="card-body table-responsive">
+          <table class="table table-sm table-striped">
+            <thead>
+              <tr>
+                <th>{{ dimension }}</th>
+                <th>普通绿证</th>
+                <th>售出量<br>(核发平台)</th>
+                <th>售出量<br>(交易平台)</th>
+                <th>售出比例<br>(核发口径)</th>
+                <th>售出比例<br>(交易口径)</th>
+                <th>平均成交价</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in summary_data %}
+              <tr{% if row.dimension_value == '汇总' %} class="table-secondary fw-bold"{% endif %}>
+                <td>{{ row.dimension_value }}</td>
+                <td>{{ row.ordinary_total }}</td>
+                <td>{{ row.issued_platform_sold }}</td>
+                <td>{{ row.trading_platform_sold }}</td>
+                <td>{{ row.issued_ratio }}%</td>
+                <td>{{ row.trading_ratio }}%</td>
+                <td>{{ row.avg_price }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="7" class="text-center text-muted">请选择维度与时间范围进行查询</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/vue.global.js') }}"></script>
+<script src="{{ url_for('static', filename='js/element-plus.js') }}"></script>
+<script src="{{ url_for('static', filename='js/element-plus-locale-zh-cn.js') }}"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  // 使用 Vue + Element Plus 管理日期范围，提供默认值：
+  (function(){
+    const initialStartMonth = {{ (start_date or '')|tojson }};
+    const initialEndMonth = {{ (end_date or '')|tojson }};
+    const initialTransStart = {{ (transaction_start_date or '')|tojson }};
+    const initialTransEnd = {{ (transaction_end_date or '')|tojson }};
+
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+
+    const defaultProd = [`${y}-01`, `${y}-${m}`];
+    const defaultTrans = [`${y}-01-01`, `${y}-${m}-${d}`];
+
+    const app = Vue.createApp({
+      data(){
+        return {
+          productionRange: (initialStartMonth && initialEndMonth) ? [initialStartMonth, initialEndMonth] : defaultProd,
+          transactionRange: (initialTransStart && initialTransEnd) ? [initialTransStart, initialTransEnd] : defaultTrans,
+        }
+      },
+      mounted(){
+        const form = document.getElementById('filterForm');
+        if(form){
+          // 隐藏字段通过 :value 绑定，提交时自动携带
+        }
+      }
+    });
+    app.use(ElementPlus, { locale: ElementPlusLocaleZhCn });
+    app.mount('#filterForm');
+  })();
+
+  // 发行/成交对比图数据
+  const labels = {{ (chart_labels or [])|tojson }};
+  const issuedData = {{ (chart_issued or [])|tojson }};
+  const issuedPlatformSoldData = {{ (chart_issued_platform_sold or [])|tojson }};
+  const tradingPlatformSoldData = {{ (chart_trading_platform_sold or [])|tojson }};
+  const issuedRatioData = {{ (chart_issued_ratio or [])|tojson }};
+  const avgPriceData = {{ (chart_avg_price or [])|tojson }};
+  
+  // 发行/成交对比图（修改后）
+  const ctx = document.getElementById('summaryChart');
+  if (ctx && labels.length) {
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: '核发(万张)', 
+            data: issuedData, 
+            backgroundColor: '#0d6efd',
+            yAxisID: 'y'
+          },
+          {
+            label: '售出量（核发平台）(万张)', 
+            data: issuedPlatformSoldData, 
+            backgroundColor: '#198754',
+            yAxisID: 'y'
+          },
+          {
+            label: '售出比例(%)', 
+            data: issuedRatioData, 
+            type: 'line',
+            borderColor: '#dc3545',
+            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+            yAxisID: 'y1',
+            tension: 0.25
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {legend: {position: 'bottom'}},
+        scales: {
+          y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: '数量(万张)'
+            }
+          },
+          y1: {
+            type: 'linear',
+            display: true,
+            position: 'right',
+            beginAtZero: true,
+            max: 100,
+            title: {
+              display: true,
+              text: '售出比例(%)'
+            },
+            grid: {
+              drawOnChartArea: false,
+            },
+          }
+        }
+      }
+    });
+  }
+  
+  // 成交量价图
+  const volumePriceCtx = document.getElementById('volumePriceChart');
+  if (volumePriceCtx && labels.length) {
+    new Chart(volumePriceCtx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: '售出量（交易口径）(万张)', 
+            data: tradingPlatformSoldData, 
+            backgroundColor: '#20c997',
+            yAxisID: 'y'
+          },
+          {
+            label: '平均成交价(元/张)', 
+            data: avgPriceData, 
+            type: 'line',
+            borderColor: '#fd7e14',
+            backgroundColor: 'rgba(253, 126, 20, 0.1)',
+            yAxisID: 'y1',
+            tension: 0.25
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {legend: {position: 'bottom'}},
+        scales: {
+          y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: '成交量(万张)'
+            }
+          },
+          y1: {
+            type: 'linear',
+            display: true,
+            position: 'right',
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: '平均成交价(元/张)'
+            },
+            grid: {
+              drawOnChartArea: false,
+            },
+          }
+        }
+      }
+    });
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,284 @@
+{% extends 'dashboard_base.html' %}
+{% block page_title %}客户分析{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/element-plus.css') }}">
+<style>
+  /* 筛选区域布局与宽度控制 */
+  #filterForm.filters-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: .5rem;
+  }
+  #filterForm .field { flex: 0 1 auto; }
+  /* 客户类型选择框已移除 */
+  /* 两个时间范围最大宽度为当前的 1/2（设置为 50% 上限） */
+  #filterForm .date-field { max-width: 50%; min-width: 220px; }
+  /* 使控件本身填满容器宽度 */
+  #filterForm .field .el-date-editor,
+  #filterForm .field select { width: 100%; }
+  /* 让按钮组不撑开宽度 */
+  #filterForm .actions { flex: 0 0 auto; }
+  
+  /* 表格高度限制和滚动条 */
+  .table-container {
+    max-height: calc(100vh - 310px); /* 减去页面其他元素的高度，调整为更小的值以避免页面出现竖向滚动条 */
+    overflow-y: auto;
+    position: relative;
+  }
+  /* 确保表头固定 */
+  .table-container table {
+    width: 100%;
+  }
+  /* 美化滚动条 */
+  .table-container::-webkit-scrollbar {
+    width: 8px;
+  }
+  .table-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+  }
+  .table-container::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+  }
+  .table-container::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="card mb-3" style="position: relative; z-index: 10;">
+    <div class="card-body">
+      <form id="filterForm" method="get" class="filters-row">
+        
+        <!-- 使用 Element Plus 范围选择器：电量生产时间（月范围） -->
+        <div class="field date-field">
+          <label class="form-label">电量生产时间</label>
+          <el-date-picker
+            v-model="productionRange"
+            type="monthrange"
+            range-separator="至"
+            start-placeholder="开始月份"
+            end-placeholder="结束月份"
+            value-format="YYYY-MM"
+            format="YYYY-MM"
+            unlink-panels="false"
+            style="width: 100%;"
+          ></el-date-picker>
+        </div>
+        
+        <!-- 使用 Element Plus 范围选择器：交易时间（日范围） -->
+        <div class="field date-field">
+          <label class="form-label">交易时间</label>
+          <el-date-picker
+            v-model="transactionRange"
+            type="daterange"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            value-format="YYYY-MM-DD"
+            format="YYYY-MM-DD"
+            unlink-panels="false"
+            style="width: 100%;"
+          ></el-date-picker>
+        </div>
+
+        <!-- 隐藏字段：提交给后端保持兼容 -->
+        <input type="hidden" name="start_date" :value="productionRange && productionRange.length===2 ? productionRange[0] : ''">
+        <input type="hidden" name="end_date" :value="productionRange && productionRange.length===2 ? productionRange[1] : ''">
+        <input type="hidden" name="transaction_start_date" :value="transactionRange && transactionRange.length===2 ? transactionRange[0] : ''">
+        <input type="hidden" name="transaction_end_date" :value="transactionRange && transactionRange.length===2 ? transactionRange[1] : ''">
+
+        <div class="actions">
+          <label class="form-label d-block">&nbsp;</label>
+          <button type="button" class="btn btn-outline-secondary me-2" @click="setUnlimitedTime">不限时间</button>
+          <a class="btn btn-outline-secondary me-2" href="{{ url_for('dashboard.customer_analysis') }}">重置</a>
+          <button class="btn btn-primary">查询</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 客户分析结果表 - 水平排列两个表格，按2:3比例分配宽度 -->
+  <div class="row g-3">
+    <!-- 左侧：客户交易汇总表 (2/5宽度) -->
+    <div class="col-md-5">
+      <div class="card h-100">
+        <div class="card-header">客户交易汇总表</div>
+        <div class="card-body">
+          <div class="table-container">
+            <table class="table table-sm table-striped">
+              <thead>
+                <tr>
+                  <th>客户名称</th>
+                  <th>总成交量</th>
+                  <th>成交均价</th>
+                  <th>更多</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in customer_data %}
+                <tr>
+                  <td>{{ row.customer_name }}</td>
+                  <td>{{ row.total_quantity }}</td>
+                  <td>{{ row.avg_price }}</td>
+                  <td>
+                    <button type="button" class="btn btn-sm btn-outline-primary show-details-btn" 
+                            data-customer-name="{{ row.customer_name }}">
+                      交易明细
+                    </button>
+                  </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-center text-muted">请选择时间范围进行查询</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 右侧：交易明细表 (3/5宽度) -->
+    <div class="col-md-7">
+      <div class="card h-100">
+        <div class="card-header">交易明细表</div>
+        <div class="card-body">
+          <div class="table-container">
+            <table id="detailsTable" class="table table-sm table-striped">
+              <thead>
+                <tr>
+                  <th>二级单位</th>
+                  <th>项目名称</th>
+                  <th>交易时间</th>
+                  <th>电量生产时间</th>
+                  <th>成交量</th>
+                  <th>成交均价</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="6" class="text-center text-muted">请点击左侧"交易明细"按钮查看详情</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/vue.global.js') }}"></script>
+<script src="{{ url_for('static', filename='js/element-plus.js') }}"></script>
+<script src="{{ url_for('static', filename='js/element-plus-locale-zh-cn.js') }}"></script>
+<script>
+  // 使用 Vue + Element Plus 管理日期范围，提供默认值：
+  (function(){
+    const initialStartMonth = {{ (start_date or '')|tojson }};
+    const initialEndMonth = {{ (end_date or '')|tojson }};
+    const initialTransStart = {{ (transaction_start_date or '')|tojson }};
+    const initialTransEnd = {{ (transaction_end_date or '')|tojson }};
+
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+
+    const defaultProd = [`${y}-01`, `${y}-${m}`];
+    const defaultTrans = [`${y}-01-01`, `${y}-${m}-${d}`];
+
+    const app = Vue.createApp({
+      data(){
+        return {
+          productionRange: (initialStartMonth && initialEndMonth) ? [initialStartMonth, initialEndMonth] : defaultProd,
+          transactionRange: (initialTransStart && initialTransEnd) ? [initialTransStart, initialTransEnd] : defaultTrans,
+          selectedCustomer: null,
+          customerDetails: []
+        }
+      },
+      mounted(){
+        const form = document.getElementById('filterForm');
+        if(form){
+          // 隐藏字段通过 :value 绑定，提交时自动携带
+        }
+        
+        // 添加交易明细按钮点击事件
+        document.querySelectorAll('.show-details-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const customerName = btn.dataset.customerName;
+            this.getCustomerDetails(customerName);
+          });
+        });
+      },
+      methods: {
+        setUnlimitedTime() {
+          // 设置时间范围为2000-01-01到2099-01-01
+          this.productionRange = ['2000-01', '2099-01'];
+          this.transactionRange = ['2000-01-01', '2099-01-01'];
+        },
+        getCustomerDetails(customerName) {
+          this.selectedCustomer = customerName;
+          
+          // 构建API请求URL
+          let url = `/dashboard/api/customer_details?customer_name=${encodeURIComponent(customerName)}`;
+          
+          // 添加日期范围参数
+          if (this.productionRange && this.productionRange.length === 2) {
+            url += `&start_date=${encodeURIComponent(this.productionRange[0])}`;
+            url += `&end_date=${encodeURIComponent(this.productionRange[1])}`;
+          }
+          
+          if (this.transactionRange && this.transactionRange.length === 2) {
+            url += `&transaction_start_date=${encodeURIComponent(this.transactionRange[0])}`;
+            url += `&transaction_end_date=${encodeURIComponent(this.transactionRange[1])}`;
+          }
+          
+          // 发送API请求
+          fetch(url)
+            .then(response => response.json())
+            .then(data => {
+              this.customerDetails = data.details;
+              this.updateDetailsTable();
+            })
+            .catch(error => {
+              console.error('获取交易明细失败:', error);
+              ElementPlus.ElMessage.error('获取交易明细失败，请稍后重试');
+            });
+        },
+        updateDetailsTable() {
+          const detailsTable = document.getElementById('detailsTable');
+          if (!detailsTable) return;
+          
+          const tbody = detailsTable.querySelector('tbody');
+          tbody.innerHTML = '';
+          
+          if (this.customerDetails.length === 0) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td colspan="6" class="text-center text-muted">未找到${this.selectedCustomer}的交易明细</td>`;
+            tbody.appendChild(tr);
+            return;
+          }
+          
+          this.customerDetails.forEach(detail => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td>${detail.secondary_unit || '-'}</td>
+              <td>${detail.project_name || '-'}</td>
+              <td>${detail.transaction_time || '-'}</td>
+              <td>${detail.production_time || '-'}</td>
+              <td>${detail.quantity || '-'}</td>
+              <td>${detail.price || '-'}</td>
+            `;
+            tbody.appendChild(tr);
+          });
+        }
+      }
+    });
+    app.use(ElementPlus, { locale: ElementPlusLocaleZhCn });
+    app.mount('#filterForm');
+  })();
+</script>
+{% endblock %}

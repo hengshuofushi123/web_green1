@@ -1,0 +1,25 @@
+{% extends "_base.html" %}
+
+{% block title %}登录{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2>用户登录</h2>
+    <form method="post">
+        <div class="mb-3">
+            <label for="username" class="form-label">账号</label>
+            <select class="form-select" id="username" name="username" required>
+                <option value="">选择账号</option>
+                {% for user in users %}
+                <option value="{{ user.username }}">{{ '管理员' if user.username == 'admin' else user.username }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="password" class="form-label">密码</label>
+            <input type="password" class="form-control" id="password" name="password" required>
+        </div>
+        <button type="submit" class="btn btn-primary">登录</button>
+    </form>
+</div>
+{% endblock %}

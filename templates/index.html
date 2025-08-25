@@ -1,0 +1,147 @@
+{% extends "_base.html" %}
+
+{% block content %}
+<h2>项目列表</h2>
+<div class="mb-4">
+    <form method="get">
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label for="query" class="form-label">项目名称快速搜索</label>
+                <input type="text" class="form-control" id="query" name="query" value="{{ active_filters.query }}">
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-12">
+                <button type="button" class="btn btn-link" data-bs-toggle="collapse" data-bs-target="#advancedFilters">高级筛选</button>
+            </div>
+        </div>
+        <div class="collapse" id="advancedFilters">
+            <div class="row">
+                {% if is_admin %}
+                <div class="col-md-4 mb-3">
+                    <label for="secondary_unit" class="form-label">二级单位</label>
+                    <select class="form-select" id="secondary_unit" name="secondary_unit">
+                        <option value="">-- 所有 --</option>
+                        {% for unit in filter_options.secondary_units %}
+                        <option value="{{ unit }}" {{ 'selected' if active_filters.secondary_unit == unit else '' }}>{{ unit }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <div class="col-md-4 mb-3">
+                    <label for="province" class="form-label">项目所在省份</label>
+                    <select class="form-select" id="province" name="province">
+                        <option value="">-- 所有 --</option>
+                        {% for item in filter_options.provinces %}
+                        <option value="{{ item }}" {{ 'selected' if active_filters.province == item else '' }}>{{ item }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="region" class="form-label">项目所在区域</label>
+                    <select class="form-select" id="region" name="region">
+                        <option value="">-- 所有 --</option>
+                        {% for item in filter_options.regions %}
+                        <option value="{{ item }}" {{ 'selected' if active_filters.region == item else '' }}>{{ item }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="power_type" class="form-label">电源品种</label>
+                    <select class="form-select" id="power_type" name="power_type">
+                        <option value="">-- 所有 --</option>
+                        {% for item in filter_options.power_types %}
+                        <option value="{{ item }}" {{ 'selected' if active_filters.power_type == item else '' }}>{{ item }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="investment_scope" class="form-label">项目投资口径</label>
+                    <select class="form-select" id="investment_scope" name="investment_scope">
+                        <option value="">-- 所有 --</option>
+                        {% for item in filter_options.investment_scopes %}
+                        <option value="{{ item }}" {{ 'selected' if active_filters.investment_scope == item else '' }}>{{ item }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="project_nature" class="form-label">项目性质</label>
+                    <select class="form-select" id="project_nature" name="project_nature">
+                        <option value="">-- 所有 --</option>
+                        {% for item in filter_options.project_natures %}
+                        <option value="{{ item }}" {{ 'selected' if active_filters.project_nature == item else '' }}>{{ item }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="is_uhv_support" class="form-label">是否特高压配套电源</label>
+                    <select class="form-select" id="is_uhv_support" name="is_uhv_support">
+                        <option value="">-- 所有 --</option>
+                        <option value="1" {{ 'selected' if active_filters.is_uhv_support == '1' else '' }}>是</option>
+                        <option value="0" {{ 'selected' if active_filters.is_uhv_support == '0' else '' }}>否</option>
+                    </select>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="has_subsidy" class="form-label">是否含补贴</label>
+                    <select class="form-select" id="has_subsidy" name="has_subsidy">
+                        <option value="">-- 所有 --</option>
+                        <option value="1" {{ 'selected' if active_filters.has_subsidy == '1' else '' }}>是</option>
+                        <option value="0" {{ 'selected' if active_filters.has_subsidy == '0' else '' }}>否</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="mb-3">
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">重置所有筛选</a>
+            <button type="submit" class="btn btn-primary">应用筛选</button>
+            <a href="{{ url_for('export_projects') + '?' + request.query_string.decode() }}" class="btn btn-success">导出Excel</a>
+        </div>
+    </form>
+</div>
+{% if is_admin %}
+<div class="mb-4">
+    <h4>Excel文件操作</h4>
+    <form method="post" enctype="multipart/form-data" action="{{ url_for('import_excel') }}">
+        <div class="input-group">
+            <input type="file" class="form-control" id="file" name="file" accept=".xlsx,.xls">
+            <button type="submit" class="btn btn-primary">导入并更新</button>
+        </div>
+    </form>
+</div>
+{% endif %}
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th style="width: 80px;">项目ID</th>
+            <th>项目名称</th>
+            <th style="width: 150px;">二级单位</th>
+            <th style="width: 150px;">装机容量(万千瓦)</th>
+            <th style="width: 150px;">投产年份</th>
+            <th style="width: 150px;">更新日期</th>
+            <th style="width: 150px;">操作</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for project in projects %}
+        <tr>
+            <td>{{ project.id }}</td>
+            <td>{{ project.project_name }}</td>
+            <td>{{ project.secondary_unit }}</td>
+            <td>{{ '%.2f'|format(project.capacity_mw) if project.capacity_mw is not none else '' }}</td>
+            <td>{{ project.production_year or '' }}</td>
+            <td>{{ project.last_updated_date.strftime('%Y-%m-%d') if project.last_updated_date }}</td>
+            <td>
+                <a href="{{ url_for('edit_project', project_id=project.id) }}" class="btn btn-sm btn-primary">查看/修改</a>
+                <form method="post" action="{{ url_for('delete_project', project_id=project.id) }}" style="display:inline;">
+                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('确定删除此项目？')">删除</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="7">没有找到符合筛选条件的项目记录</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

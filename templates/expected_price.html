@@ -1,0 +1,310 @@
+{% extends "dashboard_base.html" %}
+
+{% block title %}期望价格{% endblock %}
+
+{% block page_title %}期望价格管理{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    {% if current_user.is_admin %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body" id="adminApp">
+                    <h5 class="card-title">管理员设置</h5>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="showAllPricesSwitch" v-model="showAllPrices" @change="updateSetting">
+                        <label class="form-check-label" for="showAllPricesSwitch">允许二级单位查看所有单位的期望价格</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">期望价格填报</h5>
+                    <div id="app">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">生产年份</label>
+                                <select v-model="selectedYear" class="form-select">
+                                    <option v-for="year in availableYears" :value="year">{% raw %}{{ year }}{% endraw %}年</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">期望价格 (元/张)</label>
+                                <input type="number" v-model="price" class="form-control" step="0.01" min="0">
+                            </div>
+                            <div class="col-md-4 d-flex align-items-end">
+                                <button @click="savePrice" class="btn btn-primary me-2" :disabled="!isFormValid">
+                                    <i class="bi bi-save"></i> 保存
+                                </button>
+                                <button @click="deleteSelectedYearPrice" class="btn btn-danger" :disabled="!canDelete">
+                                    <i class="bi bi-trash"></i> 删除
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive mt-4">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>二级单位</th>
+                                        <th v-for="year in availableYears.sort((a, b) => a - b)">{% raw %}{{ year }}{% endraw %}年</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- 先显示集团公司数据，其他按拼音首字母排序 -->
+                                    <template v-for="unit in [...new Set(priceData.map(item => item.secondary_unit))].sort((a, b) => {
+                                        // 如果a是admin（集团公司），则排在最前面
+                                        if (a === 'admin') return -1;
+                                        // 如果b是admin（集团公司），则排在最前面
+                                        if (b === 'admin') return 1;
+                                        // 其他情况按拼音首字母排序
+                                        const pinyinMap = {
+                                            '上海电力': 'shanghai',
+                                            '上海能科': 'shanghai',
+                                            '东北公司': 'dongbei',
+                                            '中国电力': 'zhongguo',
+                                            '云南国际': 'yunnan',
+                                            '五凌电力': 'wuling',
+                                            '内蒙古公司': 'neimenggu',
+                                            '北京公司': 'beijing',
+                                            '吉电股份': 'jidian',
+                                            '四川公司': 'sichuan',
+                                            '国能生物': 'guoneng',
+                                            '安徽公司': 'anhui',
+                                            '山东能源': 'shandong',
+                                            '山西公司': 'shanxi',
+                                            '工程公司': 'gongcheng',
+                                            '广东公司': 'guangdong',
+                                            '广西公司': 'guangxi',
+                                            '新疆能源化工': 'xinjiang',
+                                            '江苏公司': 'jiangsu',
+                                            '江西公司': 'jiangxi',
+                                            '河南公司': 'henan',
+                                            '浙江公司': 'zhejiang',
+                                            '海南公司': 'hainan',
+                                            '湖北公司': 'hubei',
+                                            '湖南公司': 'hunan',
+                                            '甘肃公司': 'gansu',
+                                            '福建公司': 'fujian',
+                                            '贵州公司': 'guizhou',
+                                            '重庆公司': 'chongqing',
+                                            '陕西公司': 'shaanxi',
+                                            '黄河公司': 'huanghe',
+                                            '黑龙江公司': 'heilongjiang'
+                                        };
+                                        // 获取拼音排序键
+                                        const getPinyinKey = (s) => s in pinyinMap ? pinyinMap[s] : s;
+                                        return getPinyinKey(a).localeCompare(getPinyinKey(b));
+                                    })">
+                                        <tr>
+                                            <td>{% raw %}{{ unit === 'admin' ? '集团公司' : unit }}{% endraw %}</td>
+                                            <td v-for="year in availableYears.sort((a, b) => a - b)">
+                                                {% raw %}{{ priceData.find(item => item.secondary_unit === unit && item.production_year === year)?.price || '-' }}{% endraw %} 元/张
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <tr v-if="priceData.length === 0">
+                                        <td :colspan="availableYears.length + 1" class="text-center">暂无数据</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/vue.global.js') }}"></script>
+<script>
+    // 用户应用
+    const app = Vue.createApp({
+        data() {
+            return {
+                priceData: [],
+                selectedYear: new Date().getFullYear(),
+                price: null,
+                availableYears: [],
+                current_username: '{{ current_user.username }}',
+                current_is_admin: {{ current_user.is_admin|tojson }}
+            }
+        },
+        computed: {
+            isFormValid() {
+                return this.selectedYear && this.price && this.price > 0;
+            },
+            canDelete() {
+                // 检查选中的年份是否已有数据
+                return this.priceData.some(item => 
+                    item.secondary_unit === this.current_username && 
+                    item.production_year === this.selectedYear
+                );
+            }
+        },
+        mounted() {
+            this.generateYears();
+            this.loadPrices();
+        },
+        methods: {
+            generateYears() {
+                const currentYear = new Date().getFullYear();
+                this.availableYears = [];
+                for (let year = 2020; year <= currentYear; year++) {
+                    this.availableYears.push(year);
+                }
+            },
+            loadPrices() {
+                fetch('/dashboard/api/expected_prices')
+                    .then(response => response.json())
+                    .then(data => {
+                        this.priceData = data;
+                    })
+                    .catch(error => {
+                        console.error('Error loading price data:', error);
+                        alert('加载价格数据失败');
+                    });
+            },
+            deleteSelectedYearPrice() {
+                if (!this.canDelete) return;
+                
+                const priceToDelete = this.priceData.find(item => 
+                    item.secondary_unit === this.current_username && 
+                    item.production_year === this.selectedYear
+                );
+                
+                if (priceToDelete && confirm('确定要删除这条记录吗？')) {
+                    this.deletePrice(priceToDelete.id);
+                }
+            },
+            savePrice() {
+                // 检查是否是更新现有记录
+                const existingPrice = this.priceData.find(item => 
+                    item.secondary_unit === this.current_username && 
+                    item.production_year === this.selectedYear
+                );
+                
+                const url = existingPrice ? 
+                    `/dashboard/api/expected_prices/${existingPrice.id}` : 
+                    '/dashboard/api/expected_prices';
+                
+                const method = existingPrice ? 'PUT' : 'POST';
+                const data = {
+                    production_year: this.selectedYear,
+                    price: this.price
+                };
+                
+                fetch(url, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('保存失败');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    this.loadPrices();
+                    this.resetForm();
+                    alert('保存成功');
+                })
+                .catch(error => {
+                    console.error('Error saving price:', error);
+                    alert('保存失败: ' + error.message);
+                });
+            },
+            deletePrice(id) {
+                fetch(`/dashboard/api/expected_prices/${id}`, {
+                    method: 'DELETE'
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('删除失败');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    this.loadPrices();
+                    alert('删除成功');
+                })
+                .catch(error => {
+                    console.error('Error deleting price:', error);
+                    alert('删除失败: ' + error.message);
+                });
+            },
+            resetForm() {
+                this.selectedYear = new Date().getFullYear();
+                this.price = null;
+            }
+        }
+    });
+    
+    app.mount('#app');
+    
+    {% if current_user.is_admin %}
+    // 管理员应用
+    const adminApp = Vue.createApp({
+        data() {
+            return {
+                showAllPrices: false
+            }
+        },
+        mounted() {
+            this.loadSetting();
+        },
+        methods: {
+            loadSetting() {
+                fetch('/dashboard/api/settings/show_all_prices')
+                    .then(response => response.json())
+                    .then(data => {
+                        this.showAllPrices = data.value === 'true';
+                    })
+                    .catch(error => {
+                        console.error('Error loading setting:', error);
+                    });
+            },
+            updateSetting() {
+                fetch('/dashboard/api/settings/show_all_prices', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        value: this.showAllPrices.toString()
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('更新设置失败');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    alert('设置已更新');
+                })
+                .catch(error => {
+                    console.error('Error updating setting:', error);
+                    alert('更新设置失败: ' + error.message);
+                });
+            }
+        }
+    });
+    
+    adminApp.mount('#adminApp');
+    {% endif %}
+</script>
+{% endblock %}

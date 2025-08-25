@@ -1,0 +1,158 @@
+{% extends 'dashboard_base.html' %}
+{% block page_title %}用户管理{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <!-- 添加浮动提示框 -->
+  <div id="toast-container" style="position: fixed; top: 20px; right: 20px; z-index: 9999;"></div>
+  
+  <div class="card">
+    <div class="card-header">
+      <h5 class="card-title">管理二级单位账号</h5>
+    </div>
+    <div class="card-body" style="max-height: calc(100vh - 250px); overflow-y: auto;">
+      <a href="{{ url_for('dashboard.download_passwords') }}" class="btn btn-primary mb-3">下载密码Excel</a>
+      <table class="table table-striped">
+        <thead>
+          <tr>
+            <th>用户名</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for user in users %}
+          <tr>
+            <td>{{ user.username }}</td>
+            <td>
+              <div class="d-flex">
+                <form method="post" action="{{ url_for('dashboard.reset_password', username=user.username) }}" class="reset-password-form" data-username="{{ user.username }}">
+                  <button type="submit" class="btn btn-sm btn-warning me-2">重置密码</button>
+                </form>
+                <button class="btn btn-sm btn-info view-password" data-username="{{ user.username }}">查看密码</button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // 处理重置密码表单提交
+    const resetForms = document.querySelectorAll('.reset-password-form');
+    resetForms.forEach(form => {
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const username = this.getAttribute('data-username');
+        const formData = new FormData(this);
+        
+        fetch(this.action, {
+          method: 'POST',
+          body: formData
+        })
+        .then(response => response.text())
+        .then(() => {
+          // 显示浮动提示
+          showToast(`用户 ${username} 的密码已重置！`, 'success');
+        })
+        .catch(error => {
+          showToast('重置密码失败！', 'danger');
+          console.error('Error:', error);
+        });
+      });
+    });
+    
+    // 处理查看密码按钮点击
+     const viewButtons = document.querySelectorAll('.view-password');
+     viewButtons.forEach(button => {
+       button.addEventListener('click', function() {
+         const username = this.getAttribute('data-username');
+         
+         fetch(`/dashboard/user-management/get-password/${username}`)
+         .then(response => response.json())
+         .then(data => {
+           if (data.password) {
+             // 创建模态框
+             const modalHtml = `
+               <div class="modal fade" id="passwordModal" tabindex="-1" aria-labelledby="passwordModalLabel" aria-hidden="true">
+                 <div class="modal-dialog">
+                   <div class="modal-content">
+                     <div class="modal-header">
+                       <h5 class="modal-title" id="passwordModalLabel">用户密码</h5>
+                       <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                     </div>
+                     <div class="modal-body">
+                       <p><strong>${username}</strong> 的密码是：</p>
+                       <div class="alert alert-info">
+                         <h4 class="text-center">${data.password}</h4>
+                       </div>
+                     </div>
+                     <div class="modal-footer">
+                       <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                     </div>
+                   </div>
+                 </div>
+               </div>
+             `;
+             
+             // 添加到页面并显示
+             const modalContainer = document.createElement('div');
+             modalContainer.innerHTML = modalHtml;
+             document.body.appendChild(modalContainer);
+             
+             const modal = new bootstrap.Modal(document.getElementById('passwordModal'));
+             modal.show();
+             
+             // 模态框关闭后移除DOM元素
+             document.getElementById('passwordModal').addEventListener('hidden.bs.modal', function() {
+               document.body.removeChild(modalContainer);
+             });
+           } else {
+             showToast('无法获取密码！', 'danger');
+           }
+         })
+         .catch(error => {
+           showToast('获取密码失败！', 'danger');
+           console.error('Error:', error);
+         });
+       });
+     });
+    
+    // 显示浮动提示的函数
+    function showToast(message, type = 'info', duration = 3000) {
+      const toastContainer = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast align-items-center text-white bg-${type} border-0`;
+      toast.setAttribute('role', 'alert');
+      toast.setAttribute('aria-live', 'assertive');
+      toast.setAttribute('aria-atomic', 'true');
+      
+      toast.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body">
+            ${message}
+          </div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+      `;
+      
+      toastContainer.appendChild(toast);
+      
+      const bsToast = new bootstrap.Toast(toast, {
+        autohide: true,
+        delay: duration
+      });
+      
+      bsToast.show();
+      
+      // 自动移除元素
+      setTimeout(() => {
+        toast.remove();
+      }, duration + 500);
+    }
+  });
+</script>
+{% endblock %}

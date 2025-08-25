@@ -1,0 +1,268 @@
+{% extends 'dashboard_base.html' %}
+{% block page_title %}原始数据查看{% endblock %}
+{% block content %}
+<div class="container-fluid py-2">
+  <div class="row">
+    <!-- 左侧项目树 -->
+    <div class="col-auto" style="width: 400px; flex-shrink: 0;">
+      <div class="card mb-4 d-flex flex-column" style="height: calc(100vh - 110px);">
+        <div class="card-header bg-primary text-white">
+          <h5 class="card-title mb-0">项目选择</h5>
+        </div>
+        <div class="card-body project-tree-container" style="overflow-y: auto; flex-grow: 1;">
+          <!-- 单位选择 -->
+          <div class="mb-3">
+            <label class="form-label">二级单位</label>
+            <select class="form-select" id="secondary-unit-select" onchange="changeSecondaryUnit(this.value)">
+              {% for unit in secondary_units %}
+              <option value="{{ unit }}" {% if unit == selected_unit %}selected{% endif %}>{{ unit }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          
+          <!-- 项目树 -->
+          <div class="project-tree-container" style="max-width: 400px; overflow-x: auto;">
+            <ul class="list-group project-tree no-border">
+              {% for proj in projects %}
+              <li class="list-group-item {% if proj.id|string == selected_project_id %}active{% endif %}">
+                <a href="{{ url_for('dashboard.data_tables', secondary_unit=selected_unit, project_id=proj.id, table=selected_table, page=1) }}" 
+                   class="project-link" title="{{ proj.project_name }}">
+                  <i class="bi bi-dot"></i> {{ proj.project_name }}
+                </a>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 右侧数据表 -->
+    <div class="col" style="flex: 1; min-width: 0;">
+  <div class="card d-flex flex-column" style="height: calc(100vh - 110px);">
+    <div class="card-header">
+      <ul class="nav nav-tabs card-header-tabs" id="myTab" role="tablist">
+        <li class="nav-item"><a class="nav-link {% if selected_table=='nyj_ledger' %}active{% endif %}" href="{{ url_for('dashboard.data_tables', secondary_unit=selected_unit, project_id=selected_project_id, table='nyj_ledger', page=1) }}">能源局平台-绿证台账</a></li>
+        <li class="nav-item"><a class="nav-link {% if selected_table=='nyj_transactions' %}active{% endif %}" href="{{ url_for('dashboard.data_tables', secondary_unit=selected_unit, project_id=selected_project_id, table='nyj_transactions', page=1) }}">能源局平台-交易记录</a></li>
+        <li class="nav-item"><a class="nav-link {% if selected_table=='gzpt_unilateral' %}active{% endif %}" href="{{ url_for('dashboard.data_tables', secondary_unit=selected_unit, project_id=selected_project_id, table='gzpt_unilateral', page=1) }}">绿证交易平台-单向挂牌</a></li>
+        <li class="nav-item"><a class="nav-link {% if selected_table=='gzpt_online' %}active{% endif %}" href="{{ url_for('dashboard.data_tables', secondary_unit=selected_unit, project_id=selected_project_id, table='gzpt_online', page=1) }}">绿证交易平台-双边线上</a></li>
+        <li class="nav-item"><a class="nav-link {% if selected_table=='gzpt_offline' %}active{% endif %}" href="{{ url_for('dashboard.data_tables', secondary_unit=selected_unit, project_id=selected_project_id, table='gzpt_offline', page=1) }}">绿证交易平台-双边线下</a></li>
+        <li class="nav-item"><a class="nav-link {% if selected_table=='beijing_trades' %}active{% endif %}" href="{{ url_for('dashboard.data_tables', secondary_unit=selected_unit, project_id=selected_project_id, table='beijing_trades', page=1) }}">北京交易中心</a></li>
+        <li class="nav-item"><a class="nav-link {% if selected_table=='guangzhou_trades' %}active{% endif %}" href="{{ url_for('dashboard.data_tables', secondary_unit=selected_unit, project_id=selected_project_id, table='guangzhou_trades', page=1) }}">广州交易中心</a></li>
+      </ul>
+    </div>
+    <div class="card-body position-relative" style="flex-grow: 1; overflow: auto; padding-bottom: 10px; background-color: white;">
+      <div class="table-responsive" style="overflow: auto; max-height: calc(100vh - 300px);">
+        <table class="table table-sm table-striped table-nowrap">
+          <thead>
+            <tr>
+              {% if data and data|length > 0 %}
+                {% if selected_table in ['gzpt_unilateral', 'gzpt_online', 'gzpt_offline'] %}
+                  {% set keys = data[0].keys() | list %}
+                  {% set quantity_index = keys.index('交易量（张）') if '交易量（张）' in keys else -1 %}
+                  {% if quantity_index != -1 and '单价' in keys %}
+                    {% set keys = keys[:quantity_index+1] + ['单价'] + keys[quantity_index+1:] %}
+                    {% set keys = keys | unique | list %}
+                  {% endif %}
+                  {% for key in keys %}
+                  <th>{{ key }}</th>
+                  {% endfor %}
+                {% else %}
+                  {% for key in data[0].keys() %}
+                  <th>{{ key }}</th>
+                  {% endfor %}
+                {% endif %}
+              {% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in data %}
+            <tr>
+              {% if selected_table in ['gzpt_unilateral', 'gzpt_online', 'gzpt_offline'] %}
+                {% set keys = row.keys() | list %}
+                {% set quantity_index = keys.index('交易量（张）') if '交易量（张）' in keys else -1 %}
+                {% if quantity_index != -1 and '单价' in keys %}
+                  {% set keys = keys[:quantity_index+1] + ['单价'] + keys[quantity_index+1:] %}
+                  {% set keys = keys | unique | list %}
+                {% endif %}
+                {% for key in keys %}
+                <td>{{ row[key] }}</td>
+                {% endfor %}
+              {% else %}
+                {% for value in row.values() %}
+                <td>{{ value }}</td>
+                {% endfor %}
+              {% endif %}
+            </tr>
+            {% else %}
+            <tr><td colspan="100%" class="text-center text-muted">暂无数据</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <!-- Pagination -->
+    <div class="d-flex align-items-center justify-content-start mt-2 pagination-fixed">
+      <div class="form-check me-3">
+        <input class="form-check-input" type="checkbox" id="show-all-data" {% if show_all %}checked{% endif %} onchange="toggleShowAll(this.checked)">
+        <label class="form-check-label" for="show-all-data">显示全部原始数据</label>
+      </div>
+      <nav aria-label="Page navigation" class="flex-grow-1">
+        <ul class="pagination mb-0">
+            {% if pagination.has_prev %}
+            <li class="page-item"><a class="page-link" href="{{ url_for('dashboard.data_tables', secondary_unit=selected_unit, project_id=selected_project_id, table=selected_table, page=pagination.prev_num, show_all=show_all) }}">上一页</a></li>
+            {% endif %}
+            
+            {% if pagination.pages > 10 %}
+              {% for p in range(1, 4) %}
+                {% if p <= pagination.pages %}
+                <li class="page-item {% if p == pagination.page %}active{% endif %}">
+                  <a class="page-link" href="{{ url_for('dashboard.data_tables', secondary_unit=selected_unit, project_id=selected_project_id, table=selected_table, page=p, show_all=show_all) }}">{{ p }}</a>
+                </li>
+                {% endif %}
+              {% endfor %}
+              {% if pagination.page > 5 %}
+                <li class="page-item disabled"><a class="page-link">...</a></li>
+              {% endif %}
+              {% for p in range(pagination.page - 1, pagination.page + 2) %}
+                {% if p > 3 and p < pagination.pages - 2 %}
+                <li class="page-item {% if p == pagination.page %}active{% endif %}">
+                  <a class="page-link" href="{{ url_for('dashboard.data_tables', secondary_unit=selected_unit, project_id=selected_project_id, table=selected_table, page=p, show_all=show_all) }}">{{ p }}</a>
+                </li>
+                {% endif %}
+              {% endfor %}
+              {% if pagination.page < pagination.pages - 4 %}
+                <li class="page-item disabled"><a class="page-link">...</a></li>
+              {% endif %}
+              {% for p in range(pagination.pages - 2, pagination.pages + 1) %}
+                {% if p > 0 and p > pagination.page + 1 %}
+                <li class="page-item {% if p == pagination.page %}active{% endif %}">
+                  <a class="page-link" href="{{ url_for('dashboard.data_tables', secondary_unit=selected_unit, project_id=selected_project_id, table=selected_table, page=p, show_all=show_all) }}">{{ p }}</a>
+                </li>
+                {% endif %}
+              {% endfor %}
+            {% else %}
+              {% for p in range(1, pagination.pages + 1) %}
+              <li class="page-item {% if p == pagination.page %}active{% endif %}">
+                <a class="page-link" href="{{ url_for('dashboard.data_tables', secondary_unit=selected_unit, project_id=selected_project_id, table=selected_table, page=p, show_all=show_all) }}">{{ p }}</a>
+              </li>
+              {% endfor %}
+            {% endif %}
+            
+            {% if pagination.has_next %}
+            <li class="page-item"><a class="page-link" href="{{ url_for('dashboard.data_tables', secondary_unit=selected_unit, project_id=selected_project_id, table=selected_table, page=pagination.next_num, show_all=show_all) }}">下一页</a></li>
+            {% endif %}
+          </ul>
+        </nav>
+        <div class="input-group ms-3" style="width: 200px;">
+          <input type="number" id="page-jump-input" class="form-control" min="1" max="{{ pagination.pages }}" placeholder="页码">
+          <button class="btn btn-outline-primary" type="button" onclick="jumpToPage()">跳转</button>
+        </div>
+        <button class="btn btn-primary ms-auto" onclick="downloadData()">下载数据</button>
+      </div>
+    </div>
+        </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// 二级单位切换函数
+function changeSecondaryUnit(unit) {
+  window.location.href = "{{ url_for('dashboard.data_tables', secondary_unit='__unit__', project_id='', table=selected_table, page=1) }}".replace('__unit__', unit);
+}
+
+// 页码跳转函数
+function jumpToPage() {
+  const pageInput = document.getElementById('page-jump-input');
+  const page = parseInt(pageInput.value);
+  if (page && page > 0 && page <= {{ pagination.pages }}) {
+    window.location.href = "{{ url_for('dashboard.data_tables', secondary_unit=selected_unit, project_id=selected_project_id, table=selected_table, page='__page__', show_all=show_all) }}".replace('__page__', page);
+  }
+}
+
+function toggleShowAll(checked) {
+  const showAll = checked ? 'true' : 'false';
+  const url = new URL(window.location.href);
+  url.searchParams.set('show_all', showAll);
+  url.searchParams.set('page', '1');
+  window.location.href = url.toString();
+}
+
+function downloadData() {
+  const selectedUnit = '{{ selected_unit }}';
+  const selectedProjectId = '{{ selected_project_id }}';
+  const selectedTable = '{{ selected_table }}';
+  const url = `{{ url_for('dashboard.download_table_data') }}?secondary_unit=${encodeURIComponent(selectedUnit)}&project_id=${encodeURIComponent(selectedProjectId)}&table=${encodeURIComponent(selectedTable)}`;
+  window.location.href = url;
+}
+</script>
+
+<style>
+.project-tree-container {
+  border: 1px solid #dee2e6;
+  border-radius: 0.25rem;
+}
+
+.project-tree.no-border .list-group-item {
+  border: none;
+  padding: 0.5rem 0.75rem;
+}
+
+.project-tree .list-group-item {
+  border: none;
+  padding: 0.5rem 0.75rem;
+}
+
+.project-link {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #495057;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.project-tree .list-group-item.active .project-link {
+  color: white;
+}
+
+.project-tree .list-group-item:hover {
+  background-color: #f8f9fa;
+}
+
+.project-tree .list-group-item.active:hover {
+  background-color: #007bff;
+}
+
+.pagination-fixed {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: white;
+  padding: 10px;
+  border-top: 1px solid #dee2e6;
+  z-index: 1000;
+  margin-top: 0;
+  border-bottom-left-radius: 0.25rem;
+  border-bottom-right-radius: 0.25rem;
+}
+
+.table-nowrap th,
+.table-nowrap td {
+  white-space: nowrap;
+  min-width: 100px;
+}
+
+.table-nowrap th {
+  background-color: #f8f9fa;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 2px solid #dee2e6;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.1);
+}
+</style>
+{% endblock %}
