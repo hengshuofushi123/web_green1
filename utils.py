@@ -77,6 +77,10 @@ def project_to_dict(project):
         'is_filed': project.is_filed,
         'is_beijing_registered': project.is_beijing_registered,
         'is_guangzhou_registered': project.is_guangzhou_registered,
+        'is_green_cert_registered': project.is_green_cert_registered,
+        'has_beijing_transaction': project.has_beijing_transaction,
+        'has_guangzhou_transaction': project.has_guangzhou_transaction,
+        'has_green_cert_transaction': project.has_green_cert_transaction,
     }
 
 def populate_project_from_form(project, form_data):
@@ -109,5 +113,9 @@ def populate_project_from_form(project, form_data):
     project.is_filed = 'is_filed' in form_data
     project.is_beijing_registered = 'is_beijing_registered' in form_data
     project.is_guangzhou_registered = 'is_guangzhou_registered' in form_data
+    project.is_green_cert_registered = 'is_green_cert_registered' in form_data
+    project.has_beijing_transaction = 'has_beijing_transaction' in form_data
+    project.has_guangzhou_transaction = 'has_guangzhou_transaction' in form_data
+    project.has_green_cert_transaction = 'has_green_cert_transaction' in form_data
 
     return project

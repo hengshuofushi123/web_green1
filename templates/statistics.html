@@ -96,7 +96,7 @@
   <div class="row g-3 mb-3">
     <div class="col-12 col-lg-6">
       <div class="card h-100">
-        <div class="card-header">发行/成交对比图</div>
+        <div class="card-header">核发/成交对比图</div>
         <div class="card-body">
           <canvas id="summaryChart" height="400"></canvas>
         </div>
@@ -125,7 +125,7 @@
                 <th>普通绿证</th>
                 <th>售出量<br>(核发平台)</th>
                 <th>售出量<br>(交易平台)</th>
-                <th>售出比例<br>(核发口径)</th>
+                <th>售出比例<br>(划转口径)</th>
                 <th>售出比例<br>(交易口径)</th>
                 <th>平均成交价</th>
               </tr>
@@ -171,20 +171,32 @@
     const m = String(now.getMonth() + 1).padStart(2, '0');
     const d = String(now.getDate()).padStart(2, '0');
 
-    const defaultProd = [`${y}-01`, `${y}-${m}`];
-    const defaultTrans = [`${y}-01-01`, `${y}-${m}-${d}`];
-
     const app = Vue.createApp({
       data(){
         return {
-          productionRange: (initialStartMonth && initialEndMonth) ? [initialStartMonth, initialEndMonth] : defaultProd,
-          transactionRange: (initialTransStart && initialTransEnd) ? [initialTransStart, initialTransEnd] : defaultTrans,
+          productionRange: (initialStartMonth && initialEndMonth) ? [initialStartMonth, initialEndMonth] : ['', ''],
+          transactionRange: (initialTransStart && initialTransEnd) ? [initialTransStart, initialTransEnd] : ['', ''],
         }
       },
       mounted(){
         const form = document.getElementById('filterForm');
         if(form){
           // 隐藏字段通过 :value 绑定，提交时自动携带
+        }
+      },
+      methods: {
+        autoQuery() {
+          // 设置不限时间的查询参数
+          this.productionRange = ['', ''];
+          this.transactionRange = ['', ''];
+          
+          // 自动提交表单
+          setTimeout(() => {
+            const form = document.getElementById('filterForm');
+            if (form) {
+              form.submit();
+            }
+          }, 100);
         }
       }
     });

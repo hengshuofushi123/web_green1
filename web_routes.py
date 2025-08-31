@@ -1,7 +1,7 @@
 # 文件: web_routes.py
 # 包含所有网页相关的路由，使用蓝图，便于后续更新网页内容和添加仪表盘
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, abort
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, abort, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 import pandas as pd
 import io
@@ -35,10 +35,16 @@ def logout():
     logout_user()
     return redirect(url_for('web.login'))
 
-# --- 主页、搜索和高级筛选 ---
+# --- 主页重定向 ---
 @web.route('/')
 @login_required
 def index():
+    return redirect(url_for('dashboard.overview'))
+
+# --- 搜索和高级筛选 ---
+@web.route('/projects')
+@login_required
+def projects():
     is_admin = current_user.is_admin
     secondary_units = db.session.query(Project.secondary_unit).distinct().order_by(Project.secondary_unit).all()
     provinces = db.session.query(Project.province).distinct().order_by(Project.province).all()
@@ -206,7 +212,7 @@ def add_project():
             update_pwd_excel(secondary_unit, pw)
 
         flash('项目已成功新增！')
-        return redirect(url_for('web.index'))
+        return redirect(url_for('web.projects'))
 
     return render_template('project_form.html', action='Add', project={}, is_admin=is_admin)
 
@@ -217,7 +223,7 @@ def edit_project(project_id):
     project = Project.query.get_or_404(project_id)
     if not is_admin and project.secondary_unit != current_user.username:
         flash('您没有权限编辑此项目！')
-        return redirect(url_for('web.index'))
+        return redirect(url_for('web.projects'))
 
     if request.method == 'POST':
         form_data = request.form.to_dict()
@@ -241,7 +247,7 @@ def edit_project(project_id):
                 update_pwd_excel(secondary_unit, pw)
 
         flash('项目已成功更新！')
-        return redirect(url_for('web.index'))
+        return redirect(url_for('web.projects'))
 
     project_dict = project_to_dict(project)
     return render_template('project_form.html', project=project_dict, action='Edit', is_admin=is_admin)
@@ -252,11 +258,11 @@ def delete_project(project_id):
     project = Project.query.get_or_404(project_id)
     if not current_user.is_admin and project.secondary_unit != current_user.username:
         flash('您没有权限删除此项目！')
-        return redirect(url_for('web.index'))
+        return redirect(url_for('web.projects'))
     db.session.delete(project)
     db.session.commit()
     flash('项目已成功删除！')
-    return redirect(url_for('web.index'))
+    return redirect(url_for('web.projects'))
 
 # --- Excel 导入 ---
 @web.route('/import', methods=['POST'])
@@ -264,12 +270,12 @@ def delete_project(project_id):
 def import_excel():
     if not current_user.is_admin:
         flash('只有管理员可以导入Excel文件！')
-        return redirect(url_for('web.index'))
+        return redirect(url_for('web.projects'))
 
     file = request.files.get('file')
     if not file or not file.filename.endswith(('.xlsx', '.xls')):
         flash('请上传有效的Excel文件 (.xlsx, .xls)')
-        return redirect(url_for('web.index'))
+        return redirect(url_for('web.projects'))
 
     try:
         df = pd.read_excel(file, sheet_name='Sheet1', dtype=str)
@@ -293,7 +299,7 @@ def import_excel():
 
         if 'project_name' not in df.columns or 'secondary_unit' not in df.columns:
             flash('Excel文件中必须包含 "项目名称" 和 "二级单位" 列！')
-            return redirect(url_for('web.index'))
+            return redirect(url_for('web.projects'))
 
         updated_count = 0
         added_count = 0
@@ -397,7 +403,7 @@ def import_excel():
         db.session.rollback()
         flash(f'导入失败，出现严重错误：{e}', 'danger')
 
-    return redirect(url_for('web.index'))
+    return redirect(url_for('web.projects'))
 
 # --- 管理用户 ---
 @web.route('/manage_users')
@@ -405,7 +411,7 @@ def import_excel():
 def manage_users():
     if not current_user.is_admin:
         flash('只有管理员可以管理用户！')
-        return redirect(url_for('web.index'))
+        return redirect(url_for('web.projects'))
     users = User.query.filter(User.username != 'admin').order_by(User.username).all()
     return render_template('manage_users.html', users=users)
 
@@ -485,3 +491,80 @@ def export_all_data():
     except Exception as e:
         flash(f'导出数据时发生错误: {str(e)}')
         return redirect(url_for('dashboard.overview'))
+
+
+# --- 独立页面路由（不需要登录） ---
+@web.route('/contact-lookup-new')
+def contact_lookup_standalone():
+    """独立的联系人查询页面，不需要登录权限"""
+    return render_template('contact_lookup_standalone.html')
+
+
+@web.route('/api/contact-lookup-standalone-new', methods=['POST'])
+def api_contact_lookup_standalone():
+    """独立页面的联系人查询API，不需要登录权限"""
+    try:
+        # 检查页面是否已失效（8月31日0:00之后）
+        from datetime import datetime
+        current_time = datetime.now()
+        expiry_time = datetime(2025, 8, 31, 0, 0, 0)
+        
+        if current_time >= expiry_time:
+            return jsonify({'error': '页面已失效，请联系管理员！'}), 403
+        
+        data = request.get_json()
+        contact_name = data.get('contact_name', '').strip()
+        
+        if not contact_name:
+            return jsonify({'error': '请输入联系人姓名！'}), 400
+        
+        # 从projects表中查找匹配的联系人
+        projects = Project.query.filter(
+            Project.secondary_unit_contact.like(f'%{contact_name}%')
+        ).all()
+        
+        if not projects:
+            return jsonify({'error': f'未找到联系人姓名包含"{contact_name}"的记录！'}), 404
+        
+        results = []
+        
+        # 读取密码文件
+        pwd_file = 'pwd.xlsx'
+        pwd_df = None
+        if os.path.exists(pwd_file):
+            pwd_df = pd.read_excel(pwd_file)
+        
+        # 获取唯一的二级单位
+        unique_units = {}
+        for project in projects:
+            unit = project.secondary_unit
+            contact = project.secondary_unit_contact
+            if unit not in unique_units:
+                unique_units[unit] = contact
+        
+        for unit, contact in unique_units.items():
+            # 查找用户并重置密码
+            user = User.query.filter_by(username=unit).first()
+            if user:
+                # 生成新密码并更新
+                new_password = generate_random_password()
+                user.set_password(new_password)
+                db.session.commit()
+                
+                # 更新Excel文件
+                update_pwd_excel(unit, new_password)
+                
+                password = new_password
+            else:
+                password = '用户不存在'
+            
+            results.append({
+                'secondary_unit': unit,
+                'contact_name': contact,
+                'password': password
+            })
+        
+        return jsonify({'results': results})
+        
+    except Exception as e:
+        return jsonify({'error': f'查询时发生错误: {str(e)}'}), 500

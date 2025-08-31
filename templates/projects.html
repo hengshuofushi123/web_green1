@@ -1,5 +1,5 @@
 {% extends 'dashboard_base.html' %}
-{% block page_title %}项目管理{% endblock %}
+{% block page_title %}项目基本信息{% endblock %}
 {% block content %}
 <div class="container-fluid py-4">
   <div class="card mb-4">
@@ -271,6 +271,24 @@
                   <input class="form-check-input" type="checkbox" id="add_is_guangzhou_registered" name="is_guangzhou_registered">
                   <label class="form-check-label" for="add_is_guangzhou_registered">是否完成广交注册</label>
                 </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="add_is_green_cert_registered" name="is_green_cert_registered" checked>
+                  <label class="form-check-label" for="add_is_green_cert_registered">是否完成绿证交易平台注册</label>
+                </div>
+              </div>
+              <div class="mb-3">
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="add_has_beijing_transaction" name="has_beijing_transaction" checked>
+                  <label class="form-check-label" for="add_has_beijing_transaction">在北交做过交易</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="add_has_guangzhou_transaction" name="has_guangzhou_transaction" checked>
+                  <label class="form-check-label" for="add_has_guangzhou_transaction">在广交做过交易</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="add_has_green_cert_transaction" name="has_green_cert_transaction" checked>
+                  <label class="form-check-label" for="add_has_green_cert_transaction">在绿证交易平台做过交易</label>
+                </div>
               </div>
               <button type="submit" class="btn btn-primary">保存项目</button>
               <button type="button" class="btn btn-secondary" onclick="switchTab('list')">取消</button>
@@ -372,6 +390,24 @@
                   <input class="form-check-input" type="checkbox" id="edit_is_guangzhou_registered" name="is_guangzhou_registered">
                   <label class="form-check-label" for="edit_is_guangzhou_registered">是否完成广交注册</label>
                 </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="edit_is_green_cert_registered" name="is_green_cert_registered">
+                  <label class="form-check-label" for="edit_is_green_cert_registered">是否完成绿证交易平台注册</label>
+                </div>
+              </div>
+              <div class="mb-3">
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="edit_has_beijing_transaction" name="has_beijing_transaction">
+                  <label class="form-check-label" for="edit_has_beijing_transaction">在北交做过交易</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="edit_has_guangzhou_transaction" name="has_guangzhou_transaction">
+                  <label class="form-check-label" for="edit_has_guangzhou_transaction">在广交做过交易</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" id="edit_has_green_cert_transaction" name="has_green_cert_transaction">
+                  <label class="form-check-label" for="edit_has_green_cert_transaction">在绿证交易平台做过交易</label>
+                </div>
               </div>
               <button type="submit" class="btn btn-primary">保存项目</button>
               <button type="button" class="btn btn-secondary" onclick="switchTab('list')">取消</button>
@@ -430,6 +466,10 @@ function loadEditProject(projectId) {
       document.getElementById('edit_is_filed').checked = data.is_filed;
       document.getElementById('edit_is_beijing_registered').checked = data.is_beijing_registered;
       document.getElementById('edit_is_guangzhou_registered').checked = data.is_guangzhou_registered;
+      document.getElementById('edit_is_green_cert_registered').checked = data.is_green_cert_registered;
+      document.getElementById('edit_has_beijing_transaction').checked = data.has_beijing_transaction;
+      document.getElementById('edit_has_guangzhou_transaction').checked = data.has_guangzhou_transaction;
+      document.getElementById('edit_has_green_cert_transaction').checked = data.has_green_cert_transaction;
 
       // 设置表单action
       var baseUrl = '{{ url_for("dashboard.edit_project", project_id=0) }}'.replace('/0', '');

@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify
 from flask_login import login_required, current_user
-from models import db, Project, User, FAQ
+from models import db, Project, User
 from sqlalchemy import text, func, desc, or_, and_
 from decimal import Decimal
 import calendar
@@ -28,9 +28,9 @@ def overview():
     with db.engine.connect() as connection:
         # 获取核发总量（从绿证台账）
         issued_result = connection.execute(text("""
-            SELECT COALESCE(SUM(CAST(ordinary_quantity AS DECIMAL(15,2))), 0) as total_issued
+            SELECT COALESCE(SUM(CAST(shelf_load AS DECIMAL(15,2))), 0) as total_issued
             FROM nyj_green_certificate_ledger 
-            WHERE ordinary_quantity IS NOT NULL AND ordinary_quantity != ''
+            WHERE shelf_load IS NOT NULL AND shelf_load != ''
         """))
         total_issued = float(issued_result.scalar() or 0) / 10000  # 转换为万张
         
@@ -42,51 +42,30 @@ def overview():
         """))
         total_sold = float(sold_result.scalar() or 0) / 10000  # 转换为万张
         
-        # 【修正】获取平均成交价（加权平均）
+        # 获取平均成交价（从各交易表综合计算）
         avg_price_result = connection.execute(text("""
-            SELECT
-                -- 计算加权平均价：总金额 / 总数量
-                CASE
-                    WHEN SUM(total_quantity) > 0 THEN SUM(total_amount) / SUM(total_quantity)
-                    ELSE 0
-                END as avg_price
-            FROM (
-                -- 广州电力交易中心
-                SELECT
-                    CAST(gpc_certifi_num AS DECIMAL(15,2)) as total_quantity,
-                    CAST(total_cost AS DECIMAL(15,2)) as total_amount
-                FROM guangzhou_power_exchange_trades
-                WHERE gpc_certifi_num IS NOT NULL AND gpc_certifi_num > 0 AND total_cost IS NOT NULL
-
-                UNION ALL
-
-                -- 绿证交易平台 - 单向挂牌
-                SELECT
-                    CAST(total_quantity AS DECIMAL(15,2)) as total_quantity,
-                    CAST(total_amount AS DECIMAL(15,2)) as total_amount
-                FROM gzpt_unilateral_listings
-                WHERE total_quantity IS NOT NULL AND total_quantity > 0 AND total_amount IS NOT NULL AND order_status = '1'
-
-                UNION ALL
-
-                -- 绿证交易平台 - 双边线下
-                SELECT
-                    CAST(total_quantity AS DECIMAL(15,2)) as total_quantity,
-                    CAST(total_amount AS DECIMAL(15,2)) as total_amount
-                FROM gzpt_bilateral_offline_trades
-                WHERE total_quantity IS NOT NULL AND total_quantity > 0 AND total_amount IS NOT NULL AND order_status = '3'
-                
-                -- 如果未来要加入北京电力交易中心，可以在这里添加 UNION ALL
+            SELECT COALESCE(AVG(price), 0) as avg_price FROM (
+                -- 暂时注释掉北京交易中心数据，因为表结构可能有变化
+                -- SELECT CAST(transaction_price AS DECIMAL(10,2)) as price 
+                -- FROM beijing_power_exchange_trades 
+                -- WHERE transaction_price IS NOT NULL AND transaction_price != ''
                 -- UNION ALL
-                -- SELECT
-                --    CAST(transaction_quantity AS DECIMAL(15,2)) as total_quantity,
-                --    CAST(transaction_quantity AS DECIMAL(15,2)) * CAST(transaction_price AS DECIMAL(15,2)) as total_amount
-                -- FROM beijing_power_exchange_trades
-                -- WHERE transaction_quantity IS NOT NULL AND transaction_quantity > 0 AND transaction_price IS NOT NULL
-                
-            ) as all_trades;
+                SELECT CAST(unit_price AS DECIMAL(10,2)) as price 
+                FROM guangzhou_power_exchange_trades 
+                WHERE unit_price IS NOT NULL AND unit_price != ''
+                UNION ALL
+                SELECT CAST( (total_amount / total_quantity) AS DECIMAL(10,2)) as price 
+                FROM gzpt_unilateral_listings 
+                WHERE total_quantity > 0 AND total_amount IS NOT NULL AND total_quantity IS NOT NULL
+                AND order_status = '1'
+                UNION ALL
+                 SELECT CAST( (total_amount / total_quantity) AS DECIMAL(10,2)) as price 
+                 FROM gzpt_bilateral_offline_trades 
+                 WHERE total_quantity > 0 AND total_amount IS NOT NULL AND total_quantity IS NOT NULL
+                 AND order_status = '3'
+            ) as all_prices
         """))
-        avg_price = float(avg_price_result.scalar() or 0)  # 默认值如果没有数据
+        avg_price = float(avg_price_result.scalar() or 42.7)  # 默认值如果没有数据
         
         # 获取按省份的销售TOP5
         province_sales = connection.execute(text("""
@@ -107,130 +86,6 @@ def overview():
             AND p.secondary_unit IS NOT NULL
             GROUP BY p.secondary_unit 
             ORDER BY sales DESC 
-            LIMIT 5
-        """)).fetchall()
-        
-        # 获取成交量TOP5买方（按买方汇总成交量）
-        volume_top10 = connection.execute(text("""
-            SELECT 
-                buyer_name,
-                total_quantity,
-                avg_price
-            FROM (
-                SELECT 
-                    CASE 
-                        WHEN bj.buyer_entity_name IS NOT NULL THEN bj.buyer_entity_name
-                        WHEN gz.buyer_entity_name IS NOT NULL THEN gz.buyer_entity_name
-                        WHEN ul.member_name IS NOT NULL THEN ul.member_name
-                        WHEN ol.member_name IS NOT NULL THEN ol.member_name
-                        WHEN off.member_name IS NOT NULL THEN off.member_name
-                        ELSE '未知客户'
-                    END as buyer_name,
-                    -- 总成交量
-                    COALESCE(SUM(CAST(ul.total_quantity AS DECIMAL(15,2))), 0) + 
-                    COALESCE(SUM(CAST(ol.total_quantity AS DECIMAL(15,2))), 0) + 
-                    COALESCE(SUM(CAST(off.total_quantity AS DECIMAL(15,2))), 0) + 
-                    COALESCE(SUM(CAST(bj.transaction_quantity AS DECIMAL(15,2))), 0) + 
-                    COALESCE(SUM(CAST(gz.gpc_certifi_num AS DECIMAL(15,2))), 0) as total_quantity,
-                    -- 成交均价
-                    CASE 
-                        WHEN (COALESCE(SUM(CAST(ul.total_quantity AS DECIMAL(15,2))), 0) + 
-                              COALESCE(SUM(CAST(ol.total_quantity AS DECIMAL(15,2))), 0) + 
-                              COALESCE(SUM(CAST(off.total_quantity AS DECIMAL(15,2))), 0) + 
-                              COALESCE(SUM(CAST(bj.transaction_quantity AS DECIMAL(15,2))), 0) + 
-                              COALESCE(SUM(CAST(gz.gpc_certifi_num AS DECIMAL(15,2))), 0)) > 0
-                        THEN (COALESCE(SUM(CAST(ul.total_amount AS DECIMAL(15,2))), 0) + 
-                              COALESCE(SUM(CAST(ol.total_amount AS DECIMAL(15,2))), 0) + 
-                              COALESCE(SUM(CAST(off.total_amount AS DECIMAL(15,2))), 0) + 
-                              COALESCE(SUM(CAST(bj.transaction_quantity AS DECIMAL(15,2)) * CAST(bj.transaction_price AS DECIMAL(15,2))), 0) + 
-                              COALESCE(SUM(CAST(gz.total_cost AS DECIMAL(15,2))), 0)) / 
-                             (COALESCE(SUM(CAST(ul.total_quantity AS DECIMAL(15,2))), 0) + 
-                              COALESCE(SUM(CAST(ol.total_quantity AS DECIMAL(15,2))), 0) + 
-                              COALESCE(SUM(CAST(off.total_quantity AS DECIMAL(15,2))), 0) + 
-                              COALESCE(SUM(CAST(bj.transaction_quantity AS DECIMAL(15,2))), 0) + 
-                              COALESCE(SUM(CAST(gz.gpc_certifi_num AS DECIMAL(15,2))), 0))
-                        ELSE 0 
-                    END as avg_price
-                FROM projects p 
-                JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
-                LEFT JOIN gzpt_unilateral_listings ul ON n.project_id = ul.project_id AND n.production_year_month = ul.generate_ym AND ul.order_status = '1'
-                LEFT JOIN gzpt_bilateral_online_trades ol ON n.project_id = ol.project_id AND n.production_year_month = ol.generate_ym
-                LEFT JOIN gzpt_bilateral_offline_trades off ON n.project_id = off.project_id AND n.production_year_month = off.generate_ym
-                LEFT JOIN beijing_power_exchange_trades bj ON n.project_id = bj.project_id AND n.production_year_month = bj.production_year_month
-                LEFT JOIN guangzhou_power_exchange_trades gz ON n.project_id = gz.project_id AND n.production_year_month = gz.product_date
-                GROUP BY buyer_name
-                HAVING total_quantity > 0
-            ) as buyer_summary
-            ORDER BY total_quantity DESC
-            LIMIT 5
-        """)).fetchall()
-        
-        # 获取成交价TOP5（显示买方/卖方/量/价格）
-        price_top10 = connection.execute(text("""
-            SELECT 
-                buyer_name,
-                seller_name,
-                total_quantity,
-                unit_price,
-                platform
-            FROM (
-                -- 广州电力交易中心
-                SELECT 
-                    buyer_entity_name as buyer_name,
-                    COALESCE(p.secondary_unit, '未知单位') as seller_name,
-                    CAST(gpc_certifi_num AS DECIMAL(15,2)) as total_quantity,
-                    CAST(unit_price AS DECIMAL(10,2)) as unit_price,
-                    '广交平台' as platform
-                FROM guangzhou_power_exchange_trades gz
-                LEFT JOIN projects p ON gz.project_id = p.id
-                WHERE gpc_certifi_num IS NOT NULL AND gpc_certifi_num >= 100 
-                AND unit_price IS NOT NULL AND unit_price > 0
-                
-                UNION ALL
-                
-                -- 绿证交易平台 - 单向挂牌
-                SELECT 
-                    member_name as buyer_name,
-                    COALESCE(p.secondary_unit, '平台挂牌') as seller_name,
-                    CAST(total_quantity AS DECIMAL(15,2)) as total_quantity,
-                    CAST(total_amount / total_quantity AS DECIMAL(10,2)) as unit_price,
-                    '绿证平台-单向挂牌' as platform
-                FROM gzpt_unilateral_listings ul
-                LEFT JOIN projects p ON ul.project_id = p.id
-                WHERE total_quantity IS NOT NULL AND total_quantity >= 100 
-                AND total_amount IS NOT NULL AND total_amount > 0
-                AND order_status = '1'
-                
-                UNION ALL
-                
-                -- 绿证交易平台 - 双边线下
-                SELECT 
-                    member_name as buyer_name,
-                    COALESCE(p.secondary_unit, '双边交易') as seller_name,
-                    CAST(total_quantity AS DECIMAL(15,2)) as total_quantity,
-                    CAST(total_amount / total_quantity AS DECIMAL(10,2)) as unit_price,
-                    '绿证平台-双边' as platform
-                FROM gzpt_bilateral_offline_trades off
-                LEFT JOIN projects p ON off.project_id = p.id
-                WHERE total_quantity IS NOT NULL AND total_quantity >= 100 
-                AND total_amount IS NOT NULL AND total_amount > 0
-                AND order_status = '3'
-                
-                UNION ALL
-                
-                -- 北京电力交易中心
-                SELECT 
-                    buyer_entity_name as buyer_name,
-                    COALESCE(p.secondary_unit, '北交平台') as seller_name,
-                    CAST(transaction_quantity AS DECIMAL(15,2)) as total_quantity,
-                    CAST(transaction_price AS DECIMAL(10,2)) as unit_price,
-                    '北交平台' as platform
-                FROM beijing_power_exchange_trades bj
-                LEFT JOIN projects p ON bj.project_id = p.id
-                WHERE transaction_quantity IS NOT NULL AND transaction_quantity >= 100 
-                AND transaction_price IS NOT NULL AND transaction_price > 0
-            ) as all_trades
-            ORDER BY unit_price DESC
             LIMIT 5
         """)).fetchall()
         
@@ -293,10 +148,10 @@ def overview():
     
     # 处理趋势数据
     trend_labels = [row[0] for row in trend_data] if trend_data else ['01月','02月','03月','04月','05月','06月']
-    trend_issued = [round(float(row[1]), 1) for row in trend_data] if trend_data else [0, 0, 0, 0, 0, 0]
-    trend_sold = [round(float(row[2]), 1) for row in trend_data] if trend_data else [0, 0, 0, 0, 0, 0]
+    trend_issued = [round(float(row[1]), 1) for row in trend_data] if trend_data else [52, 58, 61, 65, 60, 63]
+    trend_sold = [round(float(row[2]), 1) for row in trend_data] if trend_data else [41, 46, 49, 52, 50, 51]
     
-    # 准备Top10列表数据
+    # 准备Top5列表数据
     top_provinces = [
         {'name': row[0], 'value': round(float(row[1])/10000, 1)} 
         for row in province_sales
@@ -306,28 +161,6 @@ def overview():
         {'name': row[0], 'value': round(float(row[1])/10000, 1)} 
         for row in unit_sales
     ] if unit_sales else []
-    
-    # 准备成交量Top5数据（按买方汇总）
-    top_volume_trades = [
-        {
-            'buyer': row[0] or '未知',
-            'quantity': round(float(row[1]), 0) if row[1] else 0,
-            'price': round(float(row[2]), 1) if row[2] else 0
-        }
-        for row in volume_top10
-    ] if volume_top10 else []
-    
-    # 准备成交价Top5数据
-    top_price_trades = [
-        {
-            'buyer': row[0] or '未知',
-            'seller': row[1] or '未知',
-            'quantity': round(float(row[2]), 0) if row[2] else 0,
-            'price': round(float(row[3]), 1) if row[3] else 0,
-            'platform': row[4] or '未知'
-        }
-        for row in price_top10
-    ] if price_top10 else []
     
     # 准备趋势数据
     trend = {
@@ -355,8 +188,6 @@ def overview():
                          avg_price=round(avg_price, 1),
                          top_provinces=top_provinces,
                          top_secondary_units=top_secondary_units,
-                         top_volume_trades=top_volume_trades,
-                         top_price_trades=top_price_trades,
                          trend=trend,
                          main_projects=main_projects_list)
 
@@ -1096,31 +927,13 @@ def statistics():
     
     # 获取请求参数
     dimension = request.args.get('dimension', '省份')
-    start_date = request.args.get('start_date', '')
-    end_date = request.args.get('end_date', '')
-    
-    # 如果时间参数为空，表示不限制时间；否则使用默认值
-    if not start_date and not end_date:
-        # 不限制时间，保持为空
-        pass
-    elif not start_date or not end_date:
-        # 如果只有一个为空，使用默认值
-        start_date = start_date or default_start
-        end_date = end_date or default_end
+    start_date = request.args.get('start_date', default_start)
+    end_date = request.args.get('end_date', default_end)
     
     # 获取交易日期筛选参数
     current_date_str = current_date.strftime('%Y-%m-%d')
     transaction_start_date = request.args.get('transaction_start_date', '')
-    transaction_end_date = request.args.get('transaction_end_date', '')
-    
-    # 如果交易时间参数为空，表示不限制交易时间
-    if not transaction_start_date and not transaction_end_date:
-        # 不限制交易时间，保持为空
-        pass
-    elif not transaction_start_date or not transaction_end_date:
-        # 如果只有一个为空，使用默认值
-        transaction_start_date = transaction_start_date or ''
-        transaction_end_date = transaction_end_date or current_date_str
+    transaction_end_date = request.args.get('transaction_end_date', current_date_str)
     
     summary_data = []
     chart_labels = []
@@ -1156,18 +969,18 @@ def statistics():
     
     with db.engine.connect() as connection:
         # 生产期筛选策略：
-        # - 如果时间参数为空，表示不限制时间
-        # - 如果时间参数有值，按用户选择范围
-        # - 初次进入时使用默认值
-        if not start_date and not end_date:
-            # 不限制生产期，使用极值范围
-            start_month = '0000-01'
-            end_month = '9999-12'
-        elif start_date and end_date:
-            start_month = start_date[:7]
-            end_month = end_date[:7]
+        # - 初次进入（URL无对应参数）使用默认：当年1月至当前月
+        # - 如果用户提交但清空（参数存在但为空字符串），视为不限制生产期（全量），绑定极值范围
+        # - 两端都有值时，按用户选择范围
+        has_prod_params = ('start_date' in request.args) or ('end_date' in request.args)
+        if has_prod_params:
+            if start_date and end_date:
+                start_month = start_date[:7]
+                end_month = end_date[:7]
+            else:
+                start_month = '0000-01'
+                end_month = '9999-12'
         else:
-            # 使用默认值
             start_month = default_start
             end_month = default_end
         
@@ -1175,7 +988,6 @@ def statistics():
         transaction_filter_clauses = {
             'tr': '', 'ul': '', 'ol': '', 'off': '', 'bj': '', 'gz': ''
         }
-        # 只有当交易时间参数都不为空时才添加过滤条件
         if transaction_start_date and transaction_end_date:
             # 假设 transaction_start_date 和 transaction_end_date 是 'YYYY-MM-DD' 格式
             # 为确保覆盖全天，将 end_date 调整为 'YYYY-MM-DD 23:59:59'
@@ -1199,13 +1011,13 @@ def statistics():
             '项目投资口径': 'p.investment_scope'
         }
         
-        dimension_column = dimension_column_map.get(dimension, 'p.region')
+        dimension_column = dimension_column_map.get(dimension, 'p.region') # 增加默认值防止后续代码出错
         group_by_clause = dimension_column
 
         # 特殊维度处理
         if dimension == '装机容量(万千瓦)':
             group_by_clause = """
-                CASE
+                CASE 
                     WHEN p.capacity_mw IS NULL OR p.capacity_mw = 0 THEN '未知'
                     WHEN p.capacity_mw < 5 THEN '<5万千瓦'
                     WHEN p.capacity_mw < 10 THEN '5-10万千瓦'
@@ -1233,102 +1045,105 @@ def statistics():
 
         # 构建新的、正确的SQL查询
         sql = text(f"""
-            WITH
-            -- CTE for Trading Platform Summaries (unchanged logic)
+            WITH 
+            -- 1. 预计算核发平台售出量
+            tr_summary AS (
+                SELECT 
+                    project_id, 
+                    CONCAT(production_year, '-', LPAD(production_month, 2, '0')) as production_ym,
+                    COALESCE(SUM(CAST(transaction_num AS DECIMAL(15,2))), 0) as total_sold
+                FROM nyj_transaction_records
+                WHERE project_id IN :project_ids {transaction_filter_clauses['tr']}
+                GROUP BY project_id, production_ym
+            ),
+            -- 2. 预计算广证平台-单向挂牌
             ul_summary AS (
-                SELECT
-                    project_id, generate_ym as production_ym,
+                SELECT 
+                    project_id, 
+                    generate_ym as production_ym,
                     COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
                     COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
                 FROM gzpt_unilateral_listings
                 WHERE project_id IN :project_ids AND order_status = '1' {transaction_filter_clauses['ul']}
                 GROUP BY project_id, production_ym
             ),
+            -- 3. 预计算广证平台-双边线下
             off_summary AS (
-                SELECT
-                    project_id, generate_ym as production_ym,
+                SELECT 
+                    project_id, 
+                    generate_ym as production_ym,
                     COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
                     COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
                 FROM gzpt_bilateral_offline_trades
                 WHERE project_id IN :project_ids AND order_status = '3' {transaction_filter_clauses['off']}
                 GROUP BY project_id, production_ym
             ),
+            -- 4. 预计算北交所
             bj_summary AS (
-                SELECT
-                    project_id, production_year_month as production_ym,
+                SELECT 
+                    project_id, 
+                    production_year_month as production_ym,
                     COALESCE(SUM(CAST(transaction_quantity AS DECIMAL(15,2))), 0) as total_qty,
                     COALESCE(SUM(CAST(transaction_quantity AS DECIMAL(15,2)) * CAST(transaction_price AS DECIMAL(15,2))), 0) as total_amt
                 FROM beijing_power_exchange_trades
                 WHERE project_id IN :project_ids {transaction_filter_clauses['bj']}
                 GROUP BY project_id, production_ym
             ),
+            -- 5. 预计算广交所
             gz_summary AS (
-                SELECT
-                    project_id, CONCAT(SUBSTRING(product_date, 1, 4), '-', LPAD(SUBSTRING(product_date, 6), 2, '0')) as production_ym,
+                SELECT 
+                    project_id, 
+                    CONCAT(SUBSTRING(product_date, 1, 4), '-', LPAD(SUBSTRING(product_date, 6), 2, '0')) as production_ym,
                     COALESCE(SUM(CAST(gpc_certifi_num AS DECIMAL(15,2))), 0) as total_qty,
                     COALESCE(SUM(CAST(total_cost AS DECIMAL(15,2))), 0) as total_amt
                 FROM guangzhou_power_exchange_trades
                 WHERE project_id IN :project_ids {transaction_filter_clauses['gz']}
                 GROUP BY project_id, production_ym
-            ),
-
-            -- CTE 1: Ledger-based metrics (ordinary_total, trading_platform_sold, avg_price)
-            LedgerMetrics AS (
-                SELECT
-                    {group_by_clause} as dimension_value,
-                    COALESCE(SUM(CASE WHEN n.ordinary_quantity IS NOT NULL AND n.ordinary_quantity != '' THEN CAST(n.ordinary_quantity AS DECIMAL(15,2)) ELSE 0 END), 0) as ordinary_total,
-                    (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0)) as trading_platform_sold,
-                    CASE
-                        WHEN (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0)) > 0
-                        THEN (COALESCE(SUM(ul.total_amt), 0) + COALESCE(SUM(off.total_amt), 0) + COALESCE(SUM(bj.total_amt), 0) + COALESCE(SUM(gz.total_amt), 0)) /
-                             (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0))
-                        ELSE 0
-                    END as avg_price
-                FROM projects p
-                JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
-                LEFT JOIN ul_summary ul ON p.id = ul.project_id AND n.production_year_month = ul.production_ym
-                LEFT JOIN off_summary off ON p.id = off.project_id AND n.production_year_month = off.production_ym
-                LEFT JOIN bj_summary bj ON p.id = bj.project_id AND n.production_year_month = bj.production_ym
-                LEFT JOIN gz_summary gz ON p.id = gz.project_id AND n.production_year_month = gz.production_ym
-                WHERE p.id IN :project_ids
-                  AND n.production_year_month >= :start_month
-                  AND n.production_year_month <= :end_month
-                  AND {group_by_clause} IS NOT NULL
-                GROUP BY {group_by_clause}
-            ),
-
-            -- CTE 2: Direct query for Issued Platform metrics
-            IssuedMetrics AS (
-                SELECT
-                    {group_by_clause} as dimension_value,
-                    COALESCE(SUM(CAST(tr.transaction_num AS DECIMAL(15,2))), 0) as issued_platform_sold
-                FROM projects p
-                JOIN nyj_transaction_records tr ON p.id = tr.project_id
-                WHERE p.id IN :project_ids
-                  AND CONCAT(tr.production_year, '-', LPAD(tr.production_month, 2, '0')) >= :start_month
-                  AND CONCAT(tr.production_year, '-', LPAD(tr.production_month, 2, '0')) <= :end_month
-                  {transaction_filter_clauses['tr']} -- This is the transaction time filter string
-                  AND {group_by_clause} IS NOT NULL
-                GROUP BY {group_by_clause}
-            ),
-
-            -- Master list of all possible dimension values that appear in either calculation
-            AllDimensions AS (
-                SELECT dimension_value FROM LedgerMetrics
-                UNION
-                SELECT dimension_value FROM IssuedMetrics
             )
-
-            -- Final SELECT to combine the two metrics
-            SELECT
-                d.dimension_value,
-                COALESCE(lm.ordinary_total, 0) as ordinary_total,
-                COALESCE(im.issued_platform_sold, 0) as issued_platform_sold,
-                COALESCE(lm.trading_platform_sold, 0) as trading_platform_sold,
-                COALESCE(lm.avg_price, 0) as avg_price
-            FROM AllDimensions d
-            LEFT JOIN LedgerMetrics lm ON d.dimension_value = lm.dimension_value
-            LEFT JOIN IssuedMetrics im ON d.dimension_value = im.dimension_value
+            -- 主查询
+            SELECT 
+                {dimension_column} as dimension_value,
+                -- 普通绿证总量
+                COALESCE(SUM(CASE 
+                    WHEN n.ordinary_quantity IS NOT NULL AND n.ordinary_quantity != '' 
+                    THEN CAST(n.ordinary_quantity AS DECIMAL(15,2)) 
+                    ELSE 0 
+                END), 0) as ordinary_total,
+                -- 核发平台售出量
+                COALESCE(SUM(tr.total_sold), 0) as issued_platform_sold,
+                -- 交易平台售出量汇总
+                (COALESCE(SUM(ul.total_qty), 0) + 
+                 COALESCE(SUM(off.total_qty), 0) + 
+                 COALESCE(SUM(bj.total_qty), 0) + 
+                 COALESCE(SUM(gz.total_qty), 0)) as trading_platform_sold,
+                -- 平均成交价计算
+                CASE 
+                    WHEN (COALESCE(SUM(ul.total_qty), 0) + 
+                          COALESCE(SUM(off.total_qty), 0) + 
+                          COALESCE(SUM(bj.total_qty), 0) + 
+                          COALESCE(SUM(gz.total_qty), 0)) > 0
+                    THEN (COALESCE(SUM(ul.total_amt), 0) + 
+                          COALESCE(SUM(off.total_amt), 0) + 
+                          COALESCE(SUM(bj.total_amt), 0) + 
+                          COALESCE(SUM(gz.total_amt), 0)) / 
+                         (COALESCE(SUM(ul.total_qty), 0) + 
+                          COALESCE(SUM(off.total_qty), 0) + 
+                          COALESCE(SUM(bj.total_qty), 0) + 
+                          COALESCE(SUM(gz.total_qty), 0))
+                    ELSE 0 
+                END as avg_price
+            FROM projects p
+            JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
+            LEFT JOIN tr_summary tr ON p.id = tr.project_id AND n.production_year_month = tr.production_ym
+            LEFT JOIN ul_summary ul ON p.id = ul.project_id AND n.production_year_month = ul.production_ym
+            LEFT JOIN off_summary off ON p.id = off.project_id AND n.production_year_month = off.production_ym
+            LEFT JOIN bj_summary bj ON p.id = bj.project_id AND n.production_year_month = bj.production_ym
+            LEFT JOIN gz_summary gz ON p.id = gz.project_id AND n.production_year_month = gz.production_ym
+            WHERE p.id IN :project_ids
+            AND n.production_year_month >= :start_month
+            AND n.production_year_month <= :end_month
+            AND {group_by_clause} IS NOT NULL
+            GROUP BY {group_by_clause}
             ORDER BY ordinary_total DESC
         """)
         
@@ -1477,11 +1292,11 @@ def get_analysis_data():
         main_sql_conditions = ["project_id IN :project_ids", "production_year_month IS NOT NULL", "production_year_month != ''"]
         main_sql_params = {'project_ids': tuple(project_ids_list)}
         
-        # 添加生产时间筛选条件（只有当参数不为空时才添加）
-        if production_start_month and production_start_month != '':
+        # 添加生产时间筛选条件
+        if production_start_month:
             main_sql_conditions.append("production_year_month >= :production_start_month")
             main_sql_params['production_start_month'] = production_start_month
-        if production_end_month and production_end_month != '':
+        if production_end_month:
             main_sql_conditions.append("production_year_month <= :production_end_month")
             main_sql_params['production_end_month'] = production_end_month
             
@@ -1528,11 +1343,11 @@ def get_analysis_data():
             ]
             transaction_sql_params = {'project_ids': tuple(project_ids_list), 'month': month}
             
-            # 添加交易时间筛选条件（只有当参数不为空时才添加）
-            if transaction_start_date and transaction_start_date != '':
+            # 添加交易时间筛选条件
+            if transaction_start_date:
                 transaction_sql_conditions.append("transaction_time >= :transaction_start_date")
                 transaction_sql_params['transaction_start_date'] = transaction_start_date
-            if transaction_end_date and transaction_end_date != '':
+            if transaction_end_date:
                 transaction_sql_conditions.append("transaction_time <= :transaction_end_date")
                 transaction_sql_params['transaction_end_date'] = transaction_end_date
                 
@@ -1753,18 +1568,18 @@ def get_transaction_time_data():
         # 获取所有交易月份
         main_sql_params = {'project_ids': tuple(project_ids_list)}
         
-        # 【修正】为每个表构建独立的、正确的时间筛选条件（只有当参数不为空时才添加）
+        # 【修正】为每个表构建独立的、正确的时间筛选条件
         time_filters = {
             'bj': '', 'gz': '', 'ul': '', 'ol': '', 'off': ''
         }
-        if transaction_start_date and transaction_start_date != '':
+        if transaction_start_date:
             time_filters['bj'] += " AND bj.transaction_time >= :transaction_start_date"
             time_filters['gz'] += " AND gz.deal_time >= :transaction_start_date"
             time_filters['ul'] += " AND ul.order_time_str >= :transaction_start_date"
             time_filters['ol'] += " AND ol.order_time_str >= :transaction_start_date"
             time_filters['off'] += " AND off.order_time_str >= :transaction_start_date"
             main_sql_params['transaction_start_date'] = transaction_start_date
-        if transaction_end_date and transaction_end_date != '':
+        if transaction_end_date:
             time_filters['bj'] += " AND bj.transaction_time <= :transaction_end_date"
             time_filters['gz'] += " AND gz.deal_time <= :transaction_end_date"
             time_filters['ul'] += " AND ul.order_time_str <= :transaction_end_date"
@@ -1811,17 +1626,17 @@ def get_transaction_time_data():
             ]
             unilateral_sql_params = {'project_ids': tuple(project_ids_list), 'month': transaction_month}
             
-            # 添加时间筛选条件（只有当参数不为空时才添加）
-            if transaction_start_date and transaction_start_date != '':
+            # 添加时间筛选条件
+            if transaction_start_date:
                 unilateral_sql_conditions.append("order_time_str >= :transaction_start_date")
                 unilateral_sql_params['transaction_start_date'] = transaction_start_date
-            if transaction_end_date and transaction_end_date != '':
+            if transaction_end_date:
                 unilateral_sql_conditions.append("order_time_str <= :transaction_end_date")
                 unilateral_sql_params['transaction_end_date'] = transaction_end_date
-            if production_start_month and production_start_month != '':
+            if production_start_month:
                 unilateral_sql_conditions.append("generate_ym >= :production_start_month")
                 unilateral_sql_params['production_start_month'] = production_start_month
-            if production_end_month and production_end_month != '':
+            if production_end_month:
                 unilateral_sql_conditions.append("generate_ym <= :production_end_month")
                 unilateral_sql_params['production_end_month'] = production_end_month
                 
@@ -1840,17 +1655,17 @@ def get_transaction_time_data():
             ]
             online_sql_params = {'project_ids': tuple(project_ids_list), 'month': transaction_month}
             
-            # 添加时间筛选条件（只有当参数不为空时才添加）
-            if transaction_start_date and transaction_start_date != '':
+            # 添加时间筛选条件
+            if transaction_start_date:
                 online_sql_conditions.append("order_time_str >= :transaction_start_date")
                 online_sql_params['transaction_start_date'] = transaction_start_date
-            if transaction_end_date and transaction_end_date != '':
+            if transaction_end_date:
                 online_sql_conditions.append("order_time_str <= :transaction_end_date")
                 online_sql_params['transaction_end_date'] = transaction_end_date
-            if production_start_month and production_start_month != '':
+            if production_start_month:
                 online_sql_conditions.append("generate_ym >= :production_start_month")
                 online_sql_params['production_start_month'] = production_start_month
-            if production_end_month and production_end_month != '':
+            if production_end_month:
                 online_sql_conditions.append("generate_ym <= :production_end_month")
                 online_sql_params['production_end_month'] = production_end_month
                 
@@ -1870,17 +1685,17 @@ def get_transaction_time_data():
             ]
             offline_sql_params = {'project_ids': tuple(project_ids_list), 'month': transaction_month}
             
-            # 添加时间筛选条件（只有当参数不为空时才添加）
-            if transaction_start_date and transaction_start_date != '':
+            # 添加时间筛选条件
+            if transaction_start_date:
                 offline_sql_conditions.append("order_time_str >= :transaction_start_date")
                 offline_sql_params['transaction_start_date'] = transaction_start_date
-            if transaction_end_date and transaction_end_date != '':
+            if transaction_end_date:
                 offline_sql_conditions.append("order_time_str <= :transaction_end_date")
                 offline_sql_params['transaction_end_date'] = transaction_end_date
-            if production_start_month and production_start_month != '':
+            if production_start_month:
                 offline_sql_conditions.append("generate_ym >= :production_start_month")
                 offline_sql_params['production_start_month'] = production_start_month
-            if production_end_month and production_end_month != '':
+            if production_end_month:
                 offline_sql_conditions.append("generate_ym <= :production_end_month")
                 offline_sql_params['production_end_month'] = production_end_month
                 
@@ -1899,17 +1714,17 @@ def get_transaction_time_data():
             ]
             beijing_sql_params = {'project_ids': tuple(project_ids_list), 'month': transaction_month}
             
-            # 添加时间筛选条件（只有当参数不为空时才添加）
-            if transaction_start_date and transaction_start_date != '':
+            # 添加时间筛选条件
+            if transaction_start_date:
                 beijing_sql_conditions.append("transaction_time >= :transaction_start_date")
                 beijing_sql_params['transaction_start_date'] = transaction_start_date
-            if transaction_end_date and transaction_end_date != '':
+            if transaction_end_date:
                 beijing_sql_conditions.append("transaction_time <= :transaction_end_date")
                 beijing_sql_params['transaction_end_date'] = transaction_end_date
-            if production_start_month and production_start_month != '':
+            if production_start_month:
                 beijing_sql_conditions.append("production_year_month >= :production_start_month")
                 beijing_sql_params['production_start_month'] = production_start_month
-            if production_end_month and production_end_month != '':
+            if production_end_month:
                 beijing_sql_conditions.append("production_year_month <= :production_end_month")
                 beijing_sql_params['production_end_month'] = production_end_month
                 
@@ -1932,22 +1747,22 @@ def get_transaction_time_data():
             ]
             guangzhou_sql_params = {'project_ids': tuple(project_ids_list), 'month': transaction_month}
             
-            # 【修正】添加时间筛选条件（只有当参数不为空时才添加）
-            if transaction_start_date and transaction_start_date != '':
+            # 【修正】添加时间筛选条件
+            if transaction_start_date:
                 # 交易时间筛选应作用于 deal_time 字段
                 guangzhou_sql_conditions.append("deal_time >= :transaction_start_date")
                 guangzhou_sql_params['transaction_start_date'] = transaction_start_date
-            if transaction_end_date and transaction_end_date != '':
+            if transaction_end_date:
                 # 交易时间筛选应作用于 deal_time 字段
                 guangzhou_sql_conditions.append("deal_time <= :transaction_end_date")
                 guangzhou_sql_params['transaction_end_date'] = transaction_end_date
             
-            # 生产时间筛选需转换 product_date 格式（只有当参数不为空时才添加）
+            # 生产时间筛选需转换 product_date 格式
             production_ym_column = "CONCAT(SUBSTRING(product_date, 1, 4), '-', LPAD(SUBSTRING(product_date, 6), 2, '0'))"
-            if production_start_month and production_start_month != '':
+            if production_start_month:
                 guangzhou_sql_conditions.append(f"{production_ym_column} >= :production_start_month")
                 guangzhou_sql_params['production_start_month'] = production_start_month
-            if production_end_month and production_end_month != '':
+            if production_end_month:
                 guangzhou_sql_conditions.append(f"{production_ym_column} <= :production_end_month")
                 guangzhou_sql_params['production_end_month'] = production_end_month
                 
@@ -2109,12 +1924,6 @@ def test():
 @dashboard_bp.route('/customer_analysis')
 @login_required
 def customer_analysis():
-    """重定向到客户成交情况页面"""
-    return redirect(url_for('dashboard.customer_transactions'))
-
-@dashboard_bp.route('/customer_analysis/transactions')
-@login_required
-def customer_transactions():
     """渲染客户分析页面，提供客户维度的交易数据汇总"""
     
     # 获取当前日期，设置默认时间范围
@@ -2264,448 +2073,6 @@ def customer_transactions():
                          transaction_start_date=transaction_start_date,
                          transaction_end_date=transaction_end_date,
                          customer_data=customer_data)
-
-@dashboard_bp.route('/customer_analysis/info')
-@login_required
-def customer_info():
-    """客户信息页面"""
-    from models import Customer
-    
-    # 获取客户信息表中的客户范围，与customer_transactions页面保持一致
-    # 添加项目权限控制
-    query = Project.query
-    if not current_user.is_admin:
-        query = query.filter(Project.secondary_unit == current_user.username)
-    
-    projects = query.all()
-    project_ids_list = [p.id for p in projects]
-    
-    if not project_ids_list:
-        customers = []
-    else:
-        with db.engine.connect() as connection:
-            # 获取所有有交易记录的客户名称（不限时间）
-            customer_sql = """
-                SELECT DISTINCT
-                    CASE 
-                        WHEN bj.buyer_entity_name IS NOT NULL THEN bj.buyer_entity_name
-                        WHEN gz.buyer_entity_name IS NOT NULL THEN gz.buyer_entity_name
-                        WHEN ul.member_name IS NOT NULL THEN ul.member_name
-                        WHEN ol.member_name IS NOT NULL THEN ol.member_name
-                        WHEN off.member_name IS NOT NULL THEN off.member_name
-                        ELSE '未知客户'
-                    END as customer_name
-                FROM projects p 
-                JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
-                LEFT JOIN gzpt_unilateral_listings ul ON n.project_id = ul.project_id AND n.production_year_month = ul.generate_ym AND ul.order_status = '1'
-                LEFT JOIN gzpt_bilateral_online_trades ol ON n.project_id = ol.project_id AND n.production_year_month = ol.generate_ym
-                LEFT JOIN gzpt_bilateral_offline_trades off ON n.project_id = off.project_id AND n.production_year_month = off.generate_ym
-                LEFT JOIN beijing_power_exchange_trades bj ON n.project_id = bj.project_id AND n.production_year_month = bj.production_year_month
-                LEFT JOIN guangzhou_power_exchange_trades gz ON n.project_id = gz.project_id AND n.production_year_month = gz.product_date
-                WHERE p.id IN :project_ids
-                AND (
-                    ul.total_quantity > 0 OR ol.total_quantity > 0 OR off.total_quantity > 0 OR
-                    bj.transaction_quantity > 0 OR gz.gpc_certifi_num > 0
-                )
-                ORDER BY customer_name
-            """
-            
-            result = connection.execute(
-                text(customer_sql),
-                {"project_ids": project_ids_list}
-            )
-            
-            customer_names = [row.customer_name for row in result if row.customer_name != '未知客户']
-            
-            # 获取客户交易量数据用于排序
-            customer_volume_sql = """
-                SELECT 
-                    CASE 
-                        WHEN bj.buyer_entity_name IS NOT NULL THEN bj.buyer_entity_name
-                        WHEN gz.buyer_entity_name IS NOT NULL THEN gz.buyer_entity_name
-                        WHEN ul.member_name IS NOT NULL THEN ul.member_name
-                        WHEN ol.member_name IS NOT NULL THEN ol.member_name
-                        WHEN off.member_name IS NOT NULL THEN off.member_name
-                        ELSE '未知客户'
-                    END as customer_name,
-                    SUM(
-                        COALESCE(ul.total_quantity, 0) + 
-                        COALESCE(ol.total_quantity, 0) + 
-                        COALESCE(off.total_quantity, 0) + 
-                        COALESCE(bj.transaction_quantity, 0) + 
-                        COALESCE(gz.gpc_certifi_num, 0)
-                    ) as total_quantity
-                FROM projects p 
-                JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
-                LEFT JOIN gzpt_unilateral_listings ul ON n.project_id = ul.project_id AND n.production_year_month = ul.generate_ym AND ul.order_status = '1'
-                LEFT JOIN gzpt_bilateral_online_trades ol ON n.project_id = ol.project_id AND n.production_year_month = ol.generate_ym
-                LEFT JOIN gzpt_bilateral_offline_trades off ON n.project_id = off.project_id AND n.production_year_month = off.generate_ym
-                LEFT JOIN beijing_power_exchange_trades bj ON n.project_id = bj.project_id AND n.production_year_month = bj.production_year_month
-                LEFT JOIN guangzhou_power_exchange_trades gz ON n.project_id = gz.project_id AND n.production_year_month = gz.product_date
-                WHERE p.id IN :project_ids
-                AND (
-                    ul.total_quantity > 0 OR ol.total_quantity > 0 OR off.total_quantity > 0 OR
-                    bj.transaction_quantity > 0 OR gz.gpc_certifi_num > 0
-                )
-                GROUP BY customer_name
-                HAVING total_quantity > 0
-            """
-            
-            volume_result = connection.execute(
-                text(customer_volume_sql),
-                {"project_ids": project_ids_list}
-            )
-            
-            # 创建客户交易量字典
-            customer_volumes = {row.customer_name: float(row.total_quantity) for row in volume_result if row.customer_name != '未知客户'}
-        
-        # 从customer表中获取客户信息
-        customers = Customer.query.filter(Customer.customer_name.in_(customer_names)).all()
-        
-        # 为没有在customer表中的客户创建默认记录
-        existing_names = {c.customer_name for c in customers}
-        missing_names = set(customer_names) - existing_names
-        
-        for name in missing_names:
-            new_customer = Customer(
-                customer_name=name,
-                customer_type='未设置',
-                province='未设置'
-            )
-            db.session.add(new_customer)
-        
-        if missing_names:
-            db.session.commit()
-            # 重新查询获取完整列表
-            customers = Customer.query.filter(Customer.customer_name.in_(customer_names)).all()
-        
-        # 按客户类型和交易量排序：公司客户在前，个人客户在后，各自按交易量降序排列
-        def sort_key(customer):
-            volume = customer_volumes.get(customer.customer_name, 0)
-            if customer.customer_type == '公司':
-                return (0, -volume)  # 公司排在前面，交易量大的在前
-            elif customer.customer_type == '个人':
-                return (1, -volume)  # 个人排在后面，交易量大的在前
-            else:
-                return (2, -volume)  # 未设置排在最后
-        
-        customers.sort(key=sort_key)
-    
-    # 中国省级行政区列表
-    provinces = [
-        '北京市', '天津市', '河北省', '山西省', '内蒙古自治区', '辽宁省', '吉林省', '黑龙江省',
-        '上海市', '江苏省', '浙江省', '安徽省', '福建省', '江西省', '山东省', '河南省',
-        '湖北省', '湖南省', '广东省', '广西壮族自治区', '海南省', '重庆市', '四川省', '贵州省',
-        '云南省', '西藏自治区', '陕西省', '甘肃省', '青海省', '宁夏回族自治区', '新疆维吾尔自治区',
-        '台湾省', '香港特别行政区', '澳门特别行政区'
-    ]
-    
-    return render_template('customer_info.html', customers=customers, provinces=provinces)
-
-@dashboard_bp.route('/customer_analysis/map')
-@login_required
-def customer_map():
-    """客户成交地图页面"""
-    return render_template('transaction_map.html')
-
-@dashboard_bp.route('/api/province_transaction_data')
-@login_required
-def get_province_transaction_data():
-    """获取各省份成交量数据API - 复用customer_transactions的查询逻辑"""
-    from models import Customer
-    
-    # 添加项目权限控制
-    query = Project.query
-    if not current_user.is_admin:
-        query = query.filter(Project.secondary_unit == current_user.username)
-    
-    projects = query.all()
-    project_ids_list = [p.id for p in projects]
-    
-    if not project_ids_list:
-        return jsonify({'province_data': []})
-    
-    with db.engine.connect() as connection:
-        # 使用不限时间的生产期范围
-        start_month = '0000-01'
-        end_month = '9999-12'
-        
-        # 复用customer_transactions函数中的正确SQL查询
-        transaction_sql = """
-            SELECT 
-                CASE 
-                    WHEN bj.buyer_entity_name IS NOT NULL THEN bj.buyer_entity_name
-                    WHEN gz.buyer_entity_name IS NOT NULL THEN gz.buyer_entity_name
-                    WHEN ul.member_name IS NOT NULL THEN ul.member_name
-                    WHEN ol.member_name IS NOT NULL THEN ol.member_name
-                    WHEN off.member_name IS NOT NULL THEN off.member_name
-                    ELSE '未知客户'
-                END as customer_name,
-                
-                -- 总成交量
-                COALESCE(SUM(CAST(ul.total_quantity AS DECIMAL(15,2))), 0) + 
-                COALESCE(SUM(CAST(ol.total_quantity AS DECIMAL(15,2))), 0) + 
-                COALESCE(SUM(CAST(off.total_quantity AS DECIMAL(15,2))), 0) + 
-                COALESCE(SUM(CAST(bj.transaction_quantity AS DECIMAL(15,2))), 0) + 
-                COALESCE(SUM(CAST(gz.gpc_certifi_num AS DECIMAL(15,2))), 0) as total_quantity
-            FROM projects p 
-            JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
-            LEFT JOIN gzpt_unilateral_listings ul ON n.project_id = ul.project_id AND n.production_year_month = ul.generate_ym AND ul.order_status = '1'
-            LEFT JOIN gzpt_bilateral_online_trades ol ON n.project_id = ol.project_id AND n.production_year_month = ol.generate_ym
-            LEFT JOIN gzpt_bilateral_offline_trades off ON n.project_id = off.project_id AND n.production_year_month = off.generate_ym
-            LEFT JOIN beijing_power_exchange_trades bj ON n.project_id = bj.project_id AND n.production_year_month = bj.production_year_month
-            LEFT JOIN guangzhou_power_exchange_trades gz ON n.project_id = gz.project_id AND n.production_year_month = gz.product_date
-            WHERE p.id IN :project_ids
-            AND n.production_year_month >= :start_month
-            AND n.production_year_month <= :end_month
-            GROUP BY customer_name
-            HAVING total_quantity > 0
-        """
-        
-        transaction_result = connection.execute(
-            text(transaction_sql),
-            {
-                "project_ids": project_ids_list,
-                "start_month": start_month,
-                "end_month": end_month
-            }
-        )
-        
-        # 按客户名称聚合交易量
-        customer_volumes = {}
-        for row in transaction_result:
-            if row.customer_name and row.customer_name != '未知客户':
-                customer_volumes[row.customer_name] = float(row.total_quantity or 0)
-    
-    # 直接从数据库查询所有客户的省份信息，避免IN子句参数过多
-    province_volumes = {}
-    
-    # 获取所有有省份信息的客户
-    all_customers = Customer.query.filter(
-        Customer.province.isnot(None),
-        Customer.province != '未设置'
-    ).all()
-    
-    # 按省份聚合成交量
-    for customer in all_customers:
-        if customer.customer_name in customer_volumes:
-            province = customer.province
-            volume = customer_volumes[customer.customer_name]
-            if province not in province_volumes:
-                province_volumes[province] = 0
-            province_volumes[province] += volume
-    
-    # 省份名称映射：将完整名称转换为热力图识别的简化名称
-    province_name_mapping = {
-        '北京市': '北京',
-        '天津市': '天津', 
-        '河北省': '河北',
-        '山西省': '山西',
-        '内蒙古自治区': '内蒙古',
-        '辽宁省': '辽宁',
-        '吉林省': '吉林',
-        '黑龙江省': '黑龙江',
-        '上海市': '上海',
-        '江苏省': '江苏',
-        '浙江省': '浙江',
-        '安徽省': '安徽',
-        '福建省': '福建',
-        '江西省': '江西',
-        '山东省': '山东',
-        '河南省': '河南',
-        '湖北省': '湖北',
-        '湖南省': '湖南',
-        '广东省': '广东',
-        '广西壮族自治区': '广西',
-        '海南省': '海南',
-        '重庆市': '重庆',
-        '四川省': '四川',
-        '贵州省': '贵州',
-        '云南省': '云南',
-        '西藏自治区': '西藏',
-        '陕西省': '陕西',
-        '甘肃省': '甘肃',
-        '青海省': '青海',
-        '宁夏回族自治区': '宁夏',
-        '新疆维吾尔自治区': '新疆',
-        '台湾省': '台湾',
-        '香港特别行政区': '香港',
-        '澳门特别行政区': '澳门'
-    }
-    
-    # 转换为前端需要的格式，并映射省份名称
-    province_data = []
-    for province, volume in province_volumes.items():
-        # 使用映射表转换省份名称，如果没有映射则使用原名称
-        mapped_name = province_name_mapping.get(province, province)
-        province_data.append({
-            'name': mapped_name,
-            'value': round(volume, 2)
-        })
-    
-    # 按成交量降序排序
-    province_data.sort(key=lambda x: x['value'], reverse=True)
-    
-    return jsonify({
-        'success': True,
-        'data': province_data,
-        'province_data': province_data  # 保持向后兼容
-    })
-
-@dashboard_bp.route('/api/seller_province_transaction_data')
-@login_required
-def get_seller_province_transaction_data():
-    """获取各省份卖方成交量数据API"""
-    
-    # 添加项目权限控制
-    query = Project.query
-    if not current_user.is_admin:
-        query = query.filter(Project.secondary_unit == current_user.username)
-    
-    projects = query.all()
-    project_ids_list = [p.id for p in projects]
-    
-    if not project_ids_list:
-        return jsonify({'province_data': []})
-    
-    with db.engine.connect() as connection:
-        # 使用不限时间的生产期范围
-        start_month = '0000-01'
-        end_month = '9999-12'
-        
-        # 查询卖方成交量数据 - 基于项目的省份信息
-        seller_sql = """
-            SELECT 
-                p.province as seller_province,
-                -- 总成交量
-                COALESCE(SUM(CAST(ul.total_quantity AS DECIMAL(15,2))), 0) + 
-                COALESCE(SUM(CAST(ol.total_quantity AS DECIMAL(15,2))), 0) + 
-                COALESCE(SUM(CAST(off.total_quantity AS DECIMAL(15,2))), 0) + 
-                COALESCE(SUM(CAST(bj.transaction_quantity AS DECIMAL(15,2))), 0) + 
-                COALESCE(SUM(CAST(gz.gpc_certifi_num AS DECIMAL(15,2))), 0) as total_quantity
-            FROM projects p 
-            JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
-            LEFT JOIN gzpt_unilateral_listings ul ON n.project_id = ul.project_id AND n.production_year_month = ul.generate_ym AND ul.order_status = '1'
-            LEFT JOIN gzpt_bilateral_online_trades ol ON n.project_id = ol.project_id AND n.production_year_month = ol.generate_ym
-            LEFT JOIN gzpt_bilateral_offline_trades off ON n.project_id = off.project_id AND n.production_year_month = off.generate_ym
-            LEFT JOIN beijing_power_exchange_trades bj ON n.project_id = bj.project_id AND n.production_year_month = bj.production_year_month
-            LEFT JOIN guangzhou_power_exchange_trades gz ON n.project_id = gz.project_id AND n.production_year_month = gz.product_date
-            WHERE p.id IN :project_ids
-            AND n.production_year_month >= :start_month
-            AND n.production_year_month <= :end_month
-            AND p.province IS NOT NULL
-            AND p.province != ''
-            GROUP BY p.province
-            HAVING total_quantity > 0
-        """
-        
-        seller_result = connection.execute(
-            text(seller_sql),
-            {
-                "project_ids": project_ids_list,
-                "start_month": start_month,
-                "end_month": end_month
-            }
-        )
-        
-        # 省份名称映射：将完整名称转换为热力图识别的简化名称
-        province_name_mapping = {
-            '北京市': '北京',
-            '天津市': '天津', 
-            '河北省': '河北',
-            '山西省': '山西',
-            '内蒙古自治区': '内蒙古',
-            '辽宁省': '辽宁',
-            '吉林省': '吉林',
-            '黑龙江省': '黑龙江',
-            '上海市': '上海',
-            '江苏省': '江苏',
-            '浙江省': '浙江',
-            '安徽省': '安徽',
-            '福建省': '福建',
-            '江西省': '江西',
-            '山东省': '山东',
-            '河南省': '河南',
-            '湖北省': '湖北',
-            '湖南省': '湖南',
-            '广东省': '广东',
-            '广西壮族自治区': '广西',
-            '海南省': '海南',
-            '重庆市': '重庆',
-            '四川省': '四川',
-            '贵州省': '贵州',
-            '云南省': '云南',
-            '西藏自治区': '西藏',
-            '陕西省': '陕西',
-            '甘肃省': '甘肃',
-            '青海省': '青海',
-            '宁夏回族自治区': '宁夏',
-            '新疆维吾尔自治区': '新疆',
-            '台湾省': '台湾',
-            '香港特别行政区': '香港',
-            '澳门特别行政区': '澳门'
-        }
-        
-        # 转换为前端需要的格式，并映射省份名称
-        province_data = []
-        for row in seller_result:
-            if row.seller_province:
-                # 使用映射表转换省份名称，如果没有映射则使用原名称
-                mapped_name = province_name_mapping.get(row.seller_province, row.seller_province)
-                province_data.append({
-                    'name': mapped_name,
-                    'value': round(float(row.total_quantity or 0), 2)
-                })
-        
-        # 按成交量降序排序
-        province_data.sort(key=lambda x: x['value'], reverse=True)
-        
-        return jsonify({
-            'success': True,
-            'data': province_data,
-            'province_data': province_data  # 保持向后兼容
-        })
-
-@dashboard_bp.route('/api/update_customer', methods=['POST'])
-@login_required
-def update_customer():
-    """更新客户信息API"""
-    from models import Customer
-    
-    try:
-        data = request.get_json()
-        customer_id = data.get('customer_id')
-        customer_type = data.get('customer_type')
-        province = data.get('province')
-        
-        if not customer_id:
-            return jsonify({'success': False, 'message': '客户ID不能为空'}), 400
-        
-        customer = Customer.query.filter_by(customer_name=customer_id).first()
-        if not customer:
-            return jsonify({'success': False, 'message': '客户不存在'}), 404
-        
-        # 更新客户信息
-        if customer_type:
-            customer.customer_type = customer_type
-        if province:
-            customer.province = province
-        
-        db.session.commit()
-        
-        return jsonify({
-            'success': True, 
-            'message': '客户信息更新成功',
-            'customer': {
-                'customer_name': customer.customer_name,
-                'customer_type': customer.customer_type,
-                'province': customer.province
-            }
-        })
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': f'更新失败: {str(e)}'}), 500
 
 
 @dashboard_bp.route('/api/customer_details')
@@ -2931,9 +2298,10 @@ def data_submission_time():
     elif selected_unit:
         query_builder = query_builder.filter(Project.secondary_unit == selected_unit)
     
-    # 获取当前日期，用于判断数据提交时间是否超过30天
+    # 获取当前月份，用于判断数据是否为本月提交
     current_date = datetime.now()
-    thirty_days_ago = current_date - timedelta(days=30)
+    current_month = current_date.month
+    current_year = current_date.year
     
     # 获取项目列表并准备数据表格数据
     projects = query_builder.order_by(Project.project_name).all()
@@ -2943,8 +2311,8 @@ def data_submission_time():
         nyj_status = 'normal-status'
         nyj_display = proj.data_nyj_updated_at.strftime('%Y-%m-%d %H:%M:%S') if proj.data_nyj_updated_at else '-'
         if proj.data_nyj_updated_at:
-            # 判断提交时间是否距离当前时间超过30天
-            if proj.data_nyj_updated_at < thirty_days_ago:
+            # 判断是否为本月提交
+            if proj.data_nyj_updated_at.month != current_month or proj.data_nyj_updated_at.year != current_year:
                 nyj_status = 'mild-warning'
         else:
             nyj_status = 'severe-warning'
@@ -2953,34 +2321,23 @@ def data_submission_time():
         lzy_status = 'normal-status'
         lzy_display = proj.data_lzy_updated_at.strftime('%Y-%m-%d %H:%M:%S') if proj.data_lzy_updated_at else '-'
         if proj.data_lzy_updated_at:
-            # 判断提交时间是否距离当前时间超过30天
-            if proj.data_lzy_updated_at < thirty_days_ago:
+            # 判断是否为本月提交
+            if proj.data_lzy_updated_at.month != current_month or proj.data_lzy_updated_at.year != current_year:
                 lzy_status = 'mild-warning'
         else:
-            # 判断是否未注册
-            if not proj.is_green_cert_registered:
-                lzy_display = '未注册'
-                lzy_status = 'mild-warning'
-            elif not proj.has_green_cert_transaction:
-                lzy_display = '尚无交易'
-                lzy_status = 'mild-warning'
-            else:
-                lzy_status = 'severe-warning'
+            lzy_status = 'severe-warning'
         
         # 处理北京电力交易中心数据
         bjdl_status = 'normal-status'
         bjdl_display = proj.data_bjdl_updated_at.strftime('%Y-%m-%d %H:%M:%S') if proj.data_bjdl_updated_at else '-'
         if proj.data_bjdl_updated_at:
-            # 判断提交时间是否距离当前时间超过30天
-            if proj.data_bjdl_updated_at < thirty_days_ago:
+            # 判断是否为本月提交
+            if proj.data_bjdl_updated_at.month != current_month or proj.data_bjdl_updated_at.year != current_year:
                 bjdl_status = 'mild-warning'
         else:
             # 判断是否未注册
             if not proj.is_beijing_registered:
                 bjdl_display = '未注册'
-                bjdl_status = 'mild-warning'
-            elif not proj.has_beijing_transaction:
-                bjdl_display = '尚无交易'
                 bjdl_status = 'mild-warning'
             else:
                 bjdl_status = 'severe-warning'
@@ -2989,16 +2346,13 @@ def data_submission_time():
         gjdl_status = 'normal-status'
         gjdl_display = proj.data_gjdl_updated_at.strftime('%Y-%m-%d %H:%M:%S') if proj.data_gjdl_updated_at else '-'
         if proj.data_gjdl_updated_at:
-            # 判断提交时间是否距离当前时间超过30天
-            if proj.data_gjdl_updated_at < thirty_days_ago:
+            # 判断是否为本月提交
+            if proj.data_gjdl_updated_at.month != current_month or proj.data_gjdl_updated_at.year != current_year:
                 gjdl_status = 'mild-warning'
         else:
             # 判断是否未注册
             if not proj.is_guangzhou_registered:
                 gjdl_display = '未注册'
-                gjdl_status = 'mild-warning'
-            elif not proj.has_guangzhou_transaction:
-                gjdl_display = '尚无交易'
                 gjdl_status = 'mild-warning'
             else:
                 gjdl_status = 'severe-warning'
@@ -3511,122 +2865,3 @@ def export_discrepancies():
     except Exception as e:
         flash(f'导出数据差异时发生错误: {str(e)}')
         return redirect(url_for('dashboard.overview'))
-
-
-# FAQ模块路由
-@dashboard_bp.route('/faq')
-@login_required
-def faq():
-    """FAQ页面 - 显示所有活跃的FAQ"""
-    faqs = FAQ.query.filter_by(is_active=True).order_by(FAQ.created_at.desc()).all()
-    return render_template('faq.html', faqs=faqs)
-
-@dashboard_bp.route('/api/faq', methods=['GET'])
-@login_required
-def get_faqs():
-    """获取FAQ列表API"""
-    faqs = FAQ.query.filter_by(is_active=True).order_by(FAQ.created_at.desc()).all()
-    return jsonify({
-        'success': True,
-        'data': [{
-            'id': faq.id,
-            'question': faq.question,
-            'answer': faq.answer,
-            'created_at': faq.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-            'created_by': faq.creator.username
-        } for faq in faqs]
-    })
-
-@dashboard_bp.route('/api/faq', methods=['POST'])
-@login_required
-def create_faq():
-    """创建新FAQ - 仅管理员可用"""
-    if not current_user.is_admin:
-        return jsonify({'success': False, 'message': '权限不足，仅管理员可以创建FAQ'}), 403
-    
-    data = request.get_json()
-    question = data.get('question', '').strip()
-    answer = data.get('answer', '').strip()
-    
-    if not question or not answer:
-        return jsonify({'success': False, 'message': '问题和答案不能为空'}), 400
-    
-    try:
-        faq = FAQ(
-            question=question,
-            answer=answer,
-            created_by=current_user.id
-        )
-        db.session.add(faq)
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'message': 'FAQ创建成功',
-            'data': {
-                'id': faq.id,
-                'question': faq.question,
-                'answer': faq.answer,
-                'created_at': faq.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                'created_by': faq.creator.username
-            }
-        })
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': f'创建FAQ失败: {str(e)}'}), 500
-
-@dashboard_bp.route('/api/faq/<int:faq_id>', methods=['PUT'])
-@login_required
-def update_faq(faq_id):
-    """更新FAQ - 仅管理员可用"""
-    if not current_user.is_admin:
-        return jsonify({'success': False, 'message': '权限不足，仅管理员可以编辑FAQ'}), 403
-    
-    faq = FAQ.query.get_or_404(faq_id)
-    data = request.get_json()
-    
-    question = data.get('question', '').strip()
-    answer = data.get('answer', '').strip()
-    
-    if not question or not answer:
-        return jsonify({'success': False, 'message': '问题和答案不能为空'}), 400
-    
-    try:
-        faq.question = question
-        faq.answer = answer
-        faq.updated_at = datetime.now()
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'message': 'FAQ更新成功',
-            'data': {
-                'id': faq.id,
-                'question': faq.question,
-                'answer': faq.answer,
-                'updated_at': faq.updated_at.strftime('%Y-%m-%d %H:%M:%S')
-            }
-        })
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': f'更新FAQ失败: {str(e)}'}), 500
-
-@dashboard_bp.route('/api/faq/<int:faq_id>', methods=['DELETE'])
-@login_required
-def delete_faq(faq_id):
-    """删除FAQ - 仅管理员可用"""
-    if not current_user.is_admin:
-        return jsonify({'success': False, 'message': '权限不足，仅管理员可以删除FAQ'}), 403
-    
-    faq = FAQ.query.get_or_404(faq_id)
-    
-    try:
-        # 软删除：设置为非活跃状态
-        faq.is_active = False
-        faq.updated_at = datetime.now()
-        db.session.commit()
-        
-        return jsonify({'success': True, 'message': 'FAQ删除成功'})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': f'删除FAQ失败: {str(e)}'}), 500

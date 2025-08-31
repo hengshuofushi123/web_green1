@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>二级单位密码重置（将于8月31日失效）</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        body {
+            background: #ffffff;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .main-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .search-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-width: 800px;
+            width: 100%;
+        }
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 20px 20px 0 0 !important;
+            border: none;
+            padding: 2rem;
+        }
+        .search-input {
+            border-radius: 15px;
+            border: 2px solid #e9ecef;
+            padding: 12px 20px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+        .search-input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+        .btn-search {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 15px;
+            padding: 12px 30px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        .btn-search:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        .btn-clear {
+            border-radius: 15px;
+            padding: 12px 30px;
+            font-weight: 600;
+        }
+        .results-table {
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        .table th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            font-weight: 600;
+            padding: 15px;
+        }
+        .table td {
+            padding: 15px;
+            vertical-align: middle;
+            border-color: #e9ecef;
+        }
+        .password-badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+        }
+        .alert-custom {
+            border-radius: 15px;
+            border: none;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="search-card">
+            <div class="card-header text-center">
+                <h2 class="mb-2">
+                    <i class="bi bi-search me-3"></i>
+                    二级单位密码重置（将于8月31日失效）
+                </h2>
+                <p class="mb-0 opacity-90">输入联系人姓名查询对应的二级单位，系统将自动重置密码并返回新密码</p>
+            </div>
+            <div class="card-body p-4">
+                <div class="row justify-content-center">
+                    <div class="col-md-8">
+                        <div class="mb-4">
+                            <label for="contactName" class="form-label fw-bold">联系人姓名</label>
+                            <input type="text" class="form-control search-input" id="contactName" placeholder="请输入联系人姓名">
+                        </div>
+                        <div class="text-center mb-4">
+                            <button type="button" class="btn btn-primary btn-search me-3" id="searchBtn">
+                                <i class="bi bi-search me-2"></i>查询
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-clear" id="clearBtn">
+                                <i class="bi bi-arrow-clockwise me-2"></i>清空
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 查询结果区域 -->
+                <div id="resultsSection" class="mt-4" style="display: none;">
+                    <h5 class="mb-3">
+                        <i class="bi bi-table me-2"></i>查询结果：
+                    </h5>
+                    <div class="table-responsive">
+                        <table class="table table-striped results-table">
+                            <thead>
+                                <tr>
+                                    <th><i class="bi bi-building me-2"></i>二级单位名称</th>
+                                    <th><i class="bi bi-person me-2"></i>联系人姓名</th>
+                                    <th><i class="bi bi-key me-2"></i>新密码（已重置）</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultsTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- 错误提示区域 -->
+                <div id="errorSection" class="mt-4" style="display: none;">
+                    <div class="alert alert-danger alert-custom" role="alert">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <span id="errorMessage"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast容器 -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const contactNameInput = document.getElementById('contactName');
+        const searchBtn = document.getElementById('searchBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const resultsSection = document.getElementById('resultsSection');
+        const errorSection = document.getElementById('errorSection');
+        const resultsTableBody = document.getElementById('resultsTableBody');
+        const errorMessage = document.getElementById('errorMessage');
+        
+        // 搜索按钮点击事件
+        searchBtn.addEventListener('click', function() {
+            const contactName = contactNameInput.value.trim();
+            
+            if (!contactName) {
+                showError('请输入联系人姓名！');
+                return;
+            }
+            
+            // 显示加载状态
+            searchBtn.disabled = true;
+            searchBtn.innerHTML = '<span class="loading-spinner me-2"></span>查询中...';
+            
+            // 隐藏之前的结果
+            hideResults();
+            
+            // 发送查询请求
+            fetch('/api/contact-lookup-standalone-new', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    contact_name: contactName
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showError(data.error);
+                } else {
+                    showResults(data.results);
+                }
+            })
+            .catch(error => {
+                showError('查询时发生网络错误，请重试！');
+                console.error('Error:', error);
+            })
+            .finally(() => {
+                // 恢复按钮状态
+                searchBtn.disabled = false;
+                searchBtn.innerHTML = '<i class="bi bi-search me-2"></i>查询';
+            });
+        });
+        
+        // 清空按钮点击事件
+        clearBtn.addEventListener('click', function() {
+            contactNameInput.value = '';
+            hideResults();
+            contactNameInput.focus();
+        });
+        
+        // 回车键搜索
+        contactNameInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchBtn.click();
+            }
+        });
+        
+        // 显示查询结果
+        function showResults(results) {
+            hideError();
+            
+            resultsTableBody.innerHTML = '';
+            
+            results.forEach(result => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><strong>${result.secondary_unit}</strong></td>
+                    <td>${result.contact_name || '未填写'}</td>
+                    <td>
+                        <span class="password-badge">${result.password}</span>
+                    </td>
+                `;
+                resultsTableBody.appendChild(row);
+            });
+            
+            resultsSection.style.display = 'block';
+            
+            // 显示成功提示
+            showToast(`找到 ${results.length} 条记录，密码已重置`, 'success');
+        }
+        
+        // 显示错误信息
+        function showError(message) {
+            hideResults();
+            errorMessage.textContent = message;
+            errorSection.style.display = 'block';
+        }
+        
+        // 隐藏结果
+        function hideResults() {
+            resultsSection.style.display = 'none';
+        }
+        
+        // 隐藏错误
+        function hideError() {
+            errorSection.style.display = 'none';
+        }
+        
+        // 显示提示消息
+        function showToast(message, type = 'info') {
+            const toastContainer = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const alertClass = type === 'success' ? 'alert-success' : 'alert-info';
+            toast.className = `alert ${alertClass} alert-dismissible fade show alert-custom`;
+            toast.innerHTML = `
+                <i class="bi bi-check-circle me-2"></i>${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            toastContainer.appendChild(toast);
+            
+            // 3秒后自动移除
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 3000);
+        }
+        
+        // 页面加载完成后聚焦到输入框
+        contactNameInput.focus();
+    });
+    </script>
+</body>
+</html>

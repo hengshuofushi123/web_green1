@@ -1,0 +1,1205 @@
+<!doctype html>
+<html lang=en>
+  <head>
+    <title>sqlalchemy.exc.OperationalError: (MySQLdb.OperationalError) (1054, &#34;Unknown column &#39;p.name&#39; in &#39;field list&#39;&#34;)
+[SQL: 
+            WITH
+            -- CTE for Trading Platform Summaries (unchanged logic)
+            ul_summary AS (
+                SELECT
+                    project_id, generate_ym as production_ym,
+                    COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
+                FROM gzpt_unilateral_listings
+                WHERE project_id IN %s AND order_status = &#39;1&#39; 
+                GROUP BY project_id, production_ym
+            ),
+            off_summary AS (
+                SELECT
+                    project_id, generate_ym as production_ym,
+                    COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
+                FROM gzpt_bilateral_offline_trades
+                WHERE project_id IN %s AND order_status = &#39;3&#39; 
+                GROUP BY project_id, production_ym
+            ),
+            ol_summary AS (
+                SELECT
+                    project_id, generate_ym as production_ym,
+                    COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
+                FROM gzpt_bilateral_online_trades
+                WHERE project_id IN %s AND order_status = &#39;2&#39; 
+                GROUP BY project_id, production_ym
+            ),
+            bj_summary AS (
+                SELECT
+                    project_id, production_year_month as production_ym,
+                    COALESCE(SUM(CAST(transaction_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(transaction_quantity AS DECIMAL(15,2)) * CAST(transaction_price AS DECIMAL(15,2))), 0) as total_amt
+                FROM beijing_power_exchange_trades
+                WHERE project_id IN %s 
+                GROUP BY project_id, production_ym
+            ),
+            gz_summary AS (
+                SELECT
+                    project_id, CONCAT(SUBSTRING(product_date, 1, 4), &#39;-&#39;, LPAD(SUBSTRING(product_date, 6), 2, &#39;0&#39;)) as production_ym,
+                    COALESCE(SUM(CAST(gpc_certifi_num AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_cost AS DECIMAL(15,2))), 0) as total_amt
+                FROM guangzhou_power_exchange_trades
+                WHERE project_id IN %s 
+                GROUP BY project_id, production_ym
+            ),
+
+            -- CTE 1: Ledger-based metrics (ordinary_total, trading_platform_sold, avg_price)
+            -- 修复重复计算问题：先对台账表按项目-月份去重
+            LedgerMetrics AS (
+                SELECT
+                    ledger_distinct.province as dimension_value,
+                    COALESCE(SUM(CASE WHEN ledger_distinct.ordinary_quantity IS NOT NULL AND ledger_distinct.ordinary_quantity != &#39;&#39; THEN CAST(ledger_distinct.ordinary_quantity AS DECIMAL(15,2)) ELSE 0 END), 0) as ordinary_total,
+                    (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(ol.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0)) as trading_platform_sold,
+                    CASE
+                        WHEN (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(ol.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0)) &gt; 0
+                        THEN (COALESCE(SUM(ul.total_amt), 0) + COALESCE(SUM(off.total_amt), 0) + COALESCE(SUM(ol.total_amt), 0) + COALESCE(SUM(bj.total_amt), 0) + COALESCE(SUM(gz.total_amt), 0)) /
+                             (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(ol.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0))
+                        ELSE 0
+                    END as avg_price
+                FROM (
+                    -- 对台账表按项目-月份去重，避免重复计算
+                    SELECT DISTINCT
+                        p.id as project_id,
+                        p.name as project_name,
+                        p.province,
+                        p.city,
+                        p.secondary_unit,
+                        p.energy_type,
+                        n.production_year_month,
+                        n.ordinary_quantity
+                    FROM projects p
+                    JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
+                    WHERE p.id IN %s
+                      AND n.production_year_month &gt;= %s
+                      AND n.production_year_month &lt;= %s
+                      AND p.province IS NOT NULL
+                ) ledger_distinct
+                LEFT JOIN ul_summary ul ON ledger_distinct.project_id = ul.project_id AND ledger_distinct.production_year_month = ul.production_ym
+                LEFT JOIN off_summary off ON ledger_distinct.project_id = off.project_id AND ledger_distinct.production_year_month = off.production_ym
+                LEFT JOIN ol_summary ol ON ledger_distinct.project_id = ol.project_id AND ledger_distinct.production_year_month = ol.production_ym
+                LEFT JOIN bj_summary bj ON ledger_distinct.project_id = bj.project_id AND ledger_distinct.production_year_month = bj.production_ym
+                LEFT JOIN gz_summary gz ON ledger_distinct.project_id = gz.project_id AND ledger_distinct.production_year_month = gz.production_ym
+                GROUP BY ledger_distinct.province
+            ),
+
+            -- CTE 2: Direct query for Issued Platform metrics
+            IssuedMetrics AS (
+                SELECT
+                    p.province as dimension_value,
+                    COALESCE(SUM(CAST(tr.transaction_num AS DECIMAL(15,2))), 0) as issued_platform_sold
+                FROM projects p
+                JOIN nyj_transaction_records tr ON p.id = tr.project_id
+                WHERE p.id IN %s
+                  AND CONCAT(tr.production_year, &#39;-&#39;, LPAD(tr.production_month, 2, &#39;0&#39;)) &gt;= %s
+                  AND CONCAT(tr.production_year, &#39;-&#39;, LPAD(tr.production_month, 2, &#39;0&#39;)) &lt;= %s
+                   -- This is the transaction time filter string
+                  AND p.province IS NOT NULL
+                GROUP BY p.province
+            ),
+
+            -- Master list of all possible dimension values that appear in either calculation
+            AllDimensions AS (
+                SELECT dimension_value FROM LedgerMetrics
+                UNION
+                SELECT dimension_value FROM IssuedMetrics
+            )
+
+            -- Final SELECT to combine the two metrics
+            SELECT
+                d.dimension_value,
+                COALESCE(lm.ordinary_total, 0) as ordinary_total,
+                COALESCE(im.issued_platform_sold, 0) as issued_platform_sold,
+                COALESCE(lm.trading_platform_sold, 0) as trading_platform_sold,
+                COALESCE(lm.avg_price, 0) as avg_price
+            FROM AllDimensions d
+            LEFT JOIN LedgerMetrics lm ON d.dimension_value = lm.dimension_value
+            LEFT JOIN IssuedMetrics im ON d.dimension_value = im.dimension_value
+            ORDER BY ordinary_total DESC
+        ]
+[parameters: ((1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), &#39;0000-01&#39;, &#39;9999-12&#39;, (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), &#39;0000-01&#39;, &#39;9999-12&#39;)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+ // Werkzeug Debugger</title>
+    <link rel="stylesheet" href="?__debugger__=yes&amp;cmd=resource&amp;f=style.css">
+    <link rel="shortcut icon"
+        href="?__debugger__=yes&amp;cmd=resource&amp;f=console.png">
+    <script src="?__debugger__=yes&amp;cmd=resource&amp;f=debugger.js"></script>
+    <script>
+      var CONSOLE_MODE = false,
+          EVALEX = true,
+          EVALEX_TRUSTED = false,
+          SECRET = "zLMD6H9tZ1TwMOcXK6L1";
+    </script>
+  </head>
+  <body style="background-color: #fff">
+    <div class="debugger">
+<h1>OperationalError</h1>
+<div class="detail">
+  <p class="errormsg">sqlalchemy.exc.OperationalError: (MySQLdb.OperationalError) (1054, &#34;Unknown column &#39;p.name&#39; in &#39;field list&#39;&#34;)
+[SQL: 
+            WITH
+            -- CTE for Trading Platform Summaries (unchanged logic)
+            ul_summary AS (
+                SELECT
+                    project_id, generate_ym as production_ym,
+                    COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
+                FROM gzpt_unilateral_listings
+                WHERE project_id IN %s AND order_status = &#39;1&#39; 
+                GROUP BY project_id, production_ym
+            ),
+            off_summary AS (
+                SELECT
+                    project_id, generate_ym as production_ym,
+                    COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
+                FROM gzpt_bilateral_offline_trades
+                WHERE project_id IN %s AND order_status = &#39;3&#39; 
+                GROUP BY project_id, production_ym
+            ),
+            ol_summary AS (
+                SELECT
+                    project_id, generate_ym as production_ym,
+                    COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
+                FROM gzpt_bilateral_online_trades
+                WHERE project_id IN %s AND order_status = &#39;2&#39; 
+                GROUP BY project_id, production_ym
+            ),
+            bj_summary AS (
+                SELECT
+                    project_id, production_year_month as production_ym,
+                    COALESCE(SUM(CAST(transaction_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(transaction_quantity AS DECIMAL(15,2)) * CAST(transaction_price AS DECIMAL(15,2))), 0) as total_amt
+                FROM beijing_power_exchange_trades
+                WHERE project_id IN %s 
+                GROUP BY project_id, production_ym
+            ),
+            gz_summary AS (
+                SELECT
+                    project_id, CONCAT(SUBSTRING(product_date, 1, 4), &#39;-&#39;, LPAD(SUBSTRING(product_date, 6), 2, &#39;0&#39;)) as production_ym,
+                    COALESCE(SUM(CAST(gpc_certifi_num AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_cost AS DECIMAL(15,2))), 0) as total_amt
+                FROM guangzhou_power_exchange_trades
+                WHERE project_id IN %s 
+                GROUP BY project_id, production_ym
+            ),
+
+            -- CTE 1: Ledger-based metrics (ordinary_total, trading_platform_sold, avg_price)
+            -- 修复重复计算问题：先对台账表按项目-月份去重
+            LedgerMetrics AS (
+                SELECT
+                    ledger_distinct.province as dimension_value,
+                    COALESCE(SUM(CASE WHEN ledger_distinct.ordinary_quantity IS NOT NULL AND ledger_distinct.ordinary_quantity != &#39;&#39; THEN CAST(ledger_distinct.ordinary_quantity AS DECIMAL(15,2)) ELSE 0 END), 0) as ordinary_total,
+                    (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(ol.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0)) as trading_platform_sold,
+                    CASE
+                        WHEN (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(ol.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0)) &gt; 0
+                        THEN (COALESCE(SUM(ul.total_amt), 0) + COALESCE(SUM(off.total_amt), 0) + COALESCE(SUM(ol.total_amt), 0) + COALESCE(SUM(bj.total_amt), 0) + COALESCE(SUM(gz.total_amt), 0)) /
+                             (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(ol.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0))
+                        ELSE 0
+                    END as avg_price
+                FROM (
+                    -- 对台账表按项目-月份去重，避免重复计算
+                    SELECT DISTINCT
+                        p.id as project_id,
+                        p.name as project_name,
+                        p.province,
+                        p.city,
+                        p.secondary_unit,
+                        p.energy_type,
+                        n.production_year_month,
+                        n.ordinary_quantity
+                    FROM projects p
+                    JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
+                    WHERE p.id IN %s
+                      AND n.production_year_month &gt;= %s
+                      AND n.production_year_month &lt;= %s
+                      AND p.province IS NOT NULL
+                ) ledger_distinct
+                LEFT JOIN ul_summary ul ON ledger_distinct.project_id = ul.project_id AND ledger_distinct.production_year_month = ul.production_ym
+                LEFT JOIN off_summary off ON ledger_distinct.project_id = off.project_id AND ledger_distinct.production_year_month = off.production_ym
+                LEFT JOIN ol_summary ol ON ledger_distinct.project_id = ol.project_id AND ledger_distinct.production_year_month = ol.production_ym
+                LEFT JOIN bj_summary bj ON ledger_distinct.project_id = bj.project_id AND ledger_distinct.production_year_month = bj.production_ym
+                LEFT JOIN gz_summary gz ON ledger_distinct.project_id = gz.project_id AND ledger_distinct.production_year_month = gz.production_ym
+                GROUP BY ledger_distinct.province
+            ),
+
+            -- CTE 2: Direct query for Issued Platform metrics
+            IssuedMetrics AS (
+                SELECT
+                    p.province as dimension_value,
+                    COALESCE(SUM(CAST(tr.transaction_num AS DECIMAL(15,2))), 0) as issued_platform_sold
+                FROM projects p
+                JOIN nyj_transaction_records tr ON p.id = tr.project_id
+                WHERE p.id IN %s
+                  AND CONCAT(tr.production_year, &#39;-&#39;, LPAD(tr.production_month, 2, &#39;0&#39;)) &gt;= %s
+                  AND CONCAT(tr.production_year, &#39;-&#39;, LPAD(tr.production_month, 2, &#39;0&#39;)) &lt;= %s
+                   -- This is the transaction time filter string
+                  AND p.province IS NOT NULL
+                GROUP BY p.province
+            ),
+
+            -- Master list of all possible dimension values that appear in either calculation
+            AllDimensions AS (
+                SELECT dimension_value FROM LedgerMetrics
+                UNION
+                SELECT dimension_value FROM IssuedMetrics
+            )
+
+            -- Final SELECT to combine the two metrics
+            SELECT
+                d.dimension_value,
+                COALESCE(lm.ordinary_total, 0) as ordinary_total,
+                COALESCE(im.issued_platform_sold, 0) as issued_platform_sold,
+                COALESCE(lm.trading_platform_sold, 0) as trading_platform_sold,
+                COALESCE(lm.avg_price, 0) as avg_price
+            FROM AllDimensions d
+            LEFT JOIN LedgerMetrics lm ON d.dimension_value = lm.dimension_value
+            LEFT JOIN IssuedMetrics im ON d.dimension_value = im.dimension_value
+            ORDER BY ordinary_total DESC
+        ]
+[parameters: ((1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), &#39;0000-01&#39;, &#39;9999-12&#39;, (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), &#39;0000-01&#39;, &#39;9999-12&#39;)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+</p>
+</div>
+<h2 class="traceback">Traceback <em>(most recent call last)</em></h2>
+<div class="traceback">
+  <h3></h3>
+  <ul><li><div class="frame" id="frame-1658549711392">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py"</cite>,
+      line <em class="line">1967</em>,
+      in <code class="function">_exec_single_context</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws">                            </span>context,</pre>
+<pre class="line before"><span class="ws">                        </span>):</pre>
+<pre class="line before"><span class="ws">                            </span>evt_handled = True</pre>
+<pre class="line before"><span class="ws">                            </span>break</pre>
+<pre class="line before"><span class="ws">                </span>if not evt_handled:</pre>
+<pre class="line current"><span class="ws">                    </span>self.dialect.do_execute(</pre>
+<pre class="line after"><span class="ws">                        </span>cursor, str_statement, effective_parameters, context</pre>
+<pre class="line after"><span class="ws">                    </span>)</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws">            </span>if self._has_events or self.engine._has_events:</pre>
+<pre class="line after"><span class="ws">                </span>self.dispatch.after_cursor_execute(</pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658549711504">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\default.py"</cite>,
+      line <em class="line">951</em>,
+      in <code class="function">do_execute</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws">    </span>def do_executemany(self, cursor, statement, parameters, context=None):</pre>
+<pre class="line before"><span class="ws">        </span>cursor.executemany(statement, parameters)</pre>
+<pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws">    </span>def do_execute(self, cursor, statement, parameters, context=None):</pre>
+<pre class="line current"><span class="ws">        </span>cursor.execute(statement, parameters)</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws">    </span>def do_execute_no_params(self, cursor, statement, context=None):</pre>
+<pre class="line after"><span class="ws">        </span>cursor.execute(statement)</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws">    </span>def is_disconnect(</pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658549711616">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\MySQLdb\cursors.py"</cite>,
+      line <em class="line">179</em>,
+      in <code class="function">execute</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws">        </span>self._discard()</pre>
+<pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws">        </span>mogrified_query = self._mogrify(query, args)</pre>
+<pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws">        </span>assert isinstance(mogrified_query, (bytes, bytearray))</pre>
+<pre class="line current"><span class="ws">        </span>res = self._query(mogrified_query)</pre>
+<pre class="line after"><span class="ws">        </span>return res</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws">    </span>def _mogrify(self, query, args=None):</pre>
+<pre class="line after"><span class="ws">        </span>&#34;&#34;&#34;Return query after binding args.&#34;&#34;&#34;</pre>
+<pre class="line after"><span class="ws">        </span>db = self._get_db()</pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658549711728">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\MySQLdb\cursors.py"</cite>,
+      line <em class="line">330</em>,
+      in <code class="function">_query</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws">    </span>def _query(self, q):</pre>
+<pre class="line before"><span class="ws">        </span>db = self._get_db()</pre>
+<pre class="line before"><span class="ws">        </span>self._result = None</pre>
+<pre class="line before"><span class="ws">        </span>self.rowcount = None</pre>
+<pre class="line before"><span class="ws">        </span>self.lastrowid = None</pre>
+<pre class="line current"><span class="ws">        </span>db.query(q)</pre>
+<pre class="line after"><span class="ws">        </span>self._do_get_result(db)</pre>
+<pre class="line after"><span class="ws">        </span>self._post_get_result()</pre>
+<pre class="line after"><span class="ws">        </span>self._executed = q</pre>
+<pre class="line after"><span class="ws">        </span>return self.rowcount</pre>
+<pre class="line after"><span class="ws"></span> </pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658549711840">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\MySQLdb\connections.py"</cite>,
+      line <em class="line">280</em>,
+      in <code class="function">query</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws">    </span>def query(self, query):</pre>
+<pre class="line before"><span class="ws">        </span># Since _mysql releases GIL while querying, we need immutable buffer.</pre>
+<pre class="line before"><span class="ws">        </span>if isinstance(query, bytearray):</pre>
+<pre class="line before"><span class="ws">            </span>query = bytes(query)</pre>
+<pre class="line current"><span class="ws">        </span>_mysql.connection.query(self, query)</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws">    </span>def _bytes_literal(self, bs):</pre>
+<pre class="line after"><span class="ws">        </span>assert isinstance(bs, (bytes, bytearray))</pre>
+<pre class="line after"><span class="ws">        </span>x = self.string_literal(bs)  # x is escaped and quoted bytes</pre>
+<pre class="line after"><span class="ws">        </span>if self._binary_prefix:</pre></div>
+</div>
+
+<li><div class="exc-divider">The above exception was the direct cause of the following exception:</div>
+<li><div class="frame" id="frame-1658546133744">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\flask\app.py"</cite>,
+      line <em class="line">1536</em>,
+      in <code class="function">__call__</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws">    </span>) -&gt; cabc.Iterable[bytes]:</pre>
+<pre class="line before"><span class="ws">        </span>&#34;&#34;&#34;The WSGI server calls the Flask application object as the</pre>
+<pre class="line before"><span class="ws">        </span>WSGI application. This calls :meth:`wsgi_app`, which can be</pre>
+<pre class="line before"><span class="ws">        </span>wrapped to apply middleware.</pre>
+<pre class="line before"><span class="ws">        </span>&#34;&#34;&#34;</pre>
+<pre class="line current"><span class="ws">        </span>return self.wsgi_app(environ, start_response)</pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658546223392">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\flask\app.py"</cite>,
+      line <em class="line">1514</em>,
+      in <code class="function">wsgi_app</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws">            </span>try:</pre>
+<pre class="line before"><span class="ws">                </span>ctx.push()</pre>
+<pre class="line before"><span class="ws">                </span>response = self.full_dispatch_request()</pre>
+<pre class="line before"><span class="ws">            </span>except Exception as e:</pre>
+<pre class="line before"><span class="ws">                </span>error = e</pre>
+<pre class="line current"><span class="ws">                </span>response = self.handle_exception(e)</pre>
+<pre class="line after"><span class="ws">            </span>except:  # noqa: B001</pre>
+<pre class="line after"><span class="ws">                </span>error = sys.exc_info()[1]</pre>
+<pre class="line after"><span class="ws">                </span>raise</pre>
+<pre class="line after"><span class="ws">            </span>return response(environ, start_response)</pre>
+<pre class="line after"><span class="ws">        </span>finally:</pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658546223504">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\flask\app.py"</cite>,
+      line <em class="line">1511</em>,
+      in <code class="function">wsgi_app</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws">        </span>ctx = self.request_context(environ)</pre>
+<pre class="line before"><span class="ws">        </span>error: BaseException | None = None</pre>
+<pre class="line before"><span class="ws">        </span>try:</pre>
+<pre class="line before"><span class="ws">            </span>try:</pre>
+<pre class="line before"><span class="ws">                </span>ctx.push()</pre>
+<pre class="line current"><span class="ws">                </span>response = self.full_dispatch_request()</pre>
+<pre class="line after"><span class="ws">            </span>except Exception as e:</pre>
+<pre class="line after"><span class="ws">                </span>error = e</pre>
+<pre class="line after"><span class="ws">                </span>response = self.handle_exception(e)</pre>
+<pre class="line after"><span class="ws">            </span>except:  # noqa: B001</pre>
+<pre class="line after"><span class="ws">                </span>error = sys.exc_info()[1]</pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658546223616">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\flask\app.py"</cite>,
+      line <em class="line">919</em>,
+      in <code class="function">full_dispatch_request</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws">            </span>request_started.send(self, _async_wrapper=self.ensure_sync)</pre>
+<pre class="line before"><span class="ws">            </span>rv = self.preprocess_request()</pre>
+<pre class="line before"><span class="ws">            </span>if rv is None:</pre>
+<pre class="line before"><span class="ws">                </span>rv = self.dispatch_request()</pre>
+<pre class="line before"><span class="ws">        </span>except Exception as e:</pre>
+<pre class="line current"><span class="ws">            </span>rv = self.handle_user_exception(e)</pre>
+<pre class="line after"><span class="ws">        </span>return self.finalize_request(rv)</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws">    </span>def finalize_request(</pre>
+<pre class="line after"><span class="ws">        </span>self,</pre>
+<pre class="line after"><span class="ws">        </span>rv: ft.ResponseReturnValue | HTTPException,</pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658546223728">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\flask\app.py"</cite>,
+      line <em class="line">917</em>,
+      in <code class="function">full_dispatch_request</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws">        </span>try:</pre>
+<pre class="line before"><span class="ws">            </span>request_started.send(self, _async_wrapper=self.ensure_sync)</pre>
+<pre class="line before"><span class="ws">            </span>rv = self.preprocess_request()</pre>
+<pre class="line before"><span class="ws">            </span>if rv is None:</pre>
+<pre class="line current"><span class="ws">                </span>rv = self.dispatch_request()</pre>
+<pre class="line after"><span class="ws">        </span>except Exception as e:</pre>
+<pre class="line after"><span class="ws">            </span>rv = self.handle_user_exception(e)</pre>
+<pre class="line after"><span class="ws">        </span>return self.finalize_request(rv)</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws">    </span>def finalize_request(</pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658546223840">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\flask\app.py"</cite>,
+      line <em class="line">902</em>,
+      in <code class="function">dispatch_request</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws">            </span>and req.method == &#34;OPTIONS&#34;</pre>
+<pre class="line before"><span class="ws">        </span>):</pre>
+<pre class="line before"><span class="ws">            </span>return self.make_default_options_response()</pre>
+<pre class="line before"><span class="ws">        </span># otherwise dispatch to the handler for that endpoint</pre>
+<pre class="line before"><span class="ws">        </span>view_args: dict[str, t.Any] = req.view_args  # type: ignore[assignment]</pre>
+<pre class="line current"><span class="ws">        </span>return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws">    </span>def full_dispatch_request(self) -&gt; Response:</pre>
+<pre class="line after"><span class="ws">        </span>&#34;&#34;&#34;Dispatches the request and on top of that performs request</pre>
+<pre class="line after"><span class="ws">        </span>pre and postprocessing as well as HTTP exception catching and</pre>
+<pre class="line after"><span class="ws">        </span>error handling.</pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658546223952">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\flask_login\utils.py"</cite>,
+      line <em class="line">290</em>,
+      in <code class="function">decorated_view</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws">            </span>return current_app.login_manager.unauthorized()</pre>
+<pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws">        </span># flask 1.x compatibility</pre>
+<pre class="line before"><span class="ws">        </span># current_app.ensure_sync is only available in Flask &gt;= 2.0</pre>
+<pre class="line before"><span class="ws">        </span>if callable(getattr(current_app, &#34;ensure_sync&#34;, None)):</pre>
+<pre class="line current"><span class="ws">            </span>return current_app.ensure_sync(func)(*args, **kwargs)</pre>
+<pre class="line after"><span class="ws">        </span>return func(*args, **kwargs)</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws">    </span>return decorated_view</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws"></span> </pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658546310944">
+  <h4>File <cite class="filename">"D:\code\web_green\dashboard_routes.py"</cite>,
+      line <em class="line">1367</em>,
+      in <code class="function">statistics</code></h4>
+  <div class="source "><pre class="line before"><span class="ws">            </span>&#39;end_month&#39;: end_month</pre>
+<pre class="line before"><span class="ws">        </span>}</pre>
+<pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws"></span> </pre>
+<pre class="line current"><span class="ws">        </span>result = connection.execute(sql, sql_params).fetchall()</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws">        </span># 处理查询结果</pre>
+<pre class="line after"><span class="ws">        </span>for row in result:</pre>
+<pre class="line after"><span class="ws">            </span>ordinary_total = int(row[1] or 0)</pre>
+<pre class="line after"><span class="ws">            </span>issued_platform_sold = int(row[2] or 0)</pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658548751488">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py"</cite>,
+      line <em class="line">1419</em>,
+      in <code class="function">execute</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws">        </span>try:</pre>
+<pre class="line before"><span class="ws">            </span>meth = statement._execute_on_connection</pre>
+<pre class="line before"><span class="ws">        </span>except AttributeError as err:</pre>
+<pre class="line before"><span class="ws">            </span>raise exc.ObjectNotExecutableError(statement) from err</pre>
+<pre class="line before"><span class="ws">        </span>else:</pre>
+<pre class="line current"><span class="ws">            </span>return meth(</pre>
+<pre class="line after"><span class="ws">                </span>self,</pre>
+<pre class="line after"><span class="ws">                </span>distilled_parameters,</pre>
+<pre class="line after"><span class="ws">                </span>execution_options or NO_OPTIONS,</pre>
+<pre class="line after"><span class="ws">            </span>)</pre>
+<pre class="line after"><span class="ws"></span> </pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658549042448">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\sqlalchemy\sql\elements.py"</cite>,
+      line <em class="line">526</em>,
+      in <code class="function">_execute_on_connection</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws">        </span>execution_options: CoreExecuteOptionsParameter,</pre>
+<pre class="line before"><span class="ws">    </span>) -&gt; Result[Any]:</pre>
+<pre class="line before"><span class="ws">        </span>if self.supports_execution:</pre>
+<pre class="line before"><span class="ws">            </span>if TYPE_CHECKING:</pre>
+<pre class="line before"><span class="ws">                </span>assert isinstance(self, Executable)</pre>
+<pre class="line current"><span class="ws">            </span>return connection._execute_clauseelement(</pre>
+<pre class="line after"><span class="ws">                </span>self, distilled_params, execution_options</pre>
+<pre class="line after"><span class="ws">            </span>)</pre>
+<pre class="line after"><span class="ws">        </span>else:</pre>
+<pre class="line after"><span class="ws">            </span>raise exc.ObjectNotExecutableError(self)</pre>
+<pre class="line after"><span class="ws"></span> </pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658549502352">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py"</cite>,
+      line <em class="line">1641</em>,
+      in <code class="function">_execute_clauseelement</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws">            </span>column_keys=keys,</pre>
+<pre class="line before"><span class="ws">            </span>for_executemany=for_executemany,</pre>
+<pre class="line before"><span class="ws">            </span>schema_translate_map=schema_translate_map,</pre>
+<pre class="line before"><span class="ws">            </span>linting=self.dialect.compiler_linting | compiler.WARN_LINTING,</pre>
+<pre class="line before"><span class="ws">        </span>)</pre>
+<pre class="line current"><span class="ws">        </span>ret = self._execute_context(</pre>
+<pre class="line after"><span class="ws">            </span>dialect,</pre>
+<pre class="line after"><span class="ws">            </span>dialect.execution_ctx_cls._init_compiled,</pre>
+<pre class="line after"><span class="ws">            </span>compiled_sql,</pre>
+<pre class="line after"><span class="ws">            </span>distilled_parameters,</pre>
+<pre class="line after"><span class="ws">            </span>execution_options,</pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658549502464">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py"</cite>,
+      line <em class="line">1846</em>,
+      in <code class="function">_execute_context</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws">        </span>context.pre_exec()</pre>
+<pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws">        </span>if context.execute_style is ExecuteStyle.INSERTMANYVALUES:</pre>
+<pre class="line before"><span class="ws">            </span>return self._exec_insertmany_context(dialect, context)</pre>
+<pre class="line before"><span class="ws">        </span>else:</pre>
+<pre class="line current"><span class="ws">            </span>return self._exec_single_context(</pre>
+<pre class="line after"><span class="ws">                </span>dialect, context, statement, parameters</pre>
+<pre class="line after"><span class="ws">            </span>)</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws">    </span>def _exec_single_context(</pre>
+<pre class="line after"><span class="ws">        </span>self,</pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658549502576">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py"</cite>,
+      line <em class="line">1986</em>,
+      in <code class="function">_exec_single_context</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws">            </span>context.post_exec()</pre>
+<pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws">            </span>result = context._setup_result_proxy()</pre>
+<pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws">        </span>except BaseException as e:</pre>
+<pre class="line current"><span class="ws">            </span>self._handle_dbapi_exception(</pre>
+<pre class="line after"><span class="ws">                </span>e, str_statement, effective_parameters, cursor, context</pre>
+<pre class="line after"><span class="ws">            </span>)</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws">        </span>return result</pre>
+<pre class="line after"><span class="ws"></span> </pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658549502688">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py"</cite>,
+      line <em class="line">2355</em>,
+      in <code class="function">_handle_dbapi_exception</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws">            </span>if newraise:</pre>
+<pre class="line before"><span class="ws">                </span>raise newraise.with_traceback(exc_info[2]) from e</pre>
+<pre class="line before"><span class="ws">            </span>elif should_wrap:</pre>
+<pre class="line before"><span class="ws">                </span>assert sqlalchemy_exception is not None</pre>
+<pre class="line current"><span class="ws">                </span>raise sqlalchemy_exception.with_traceback(exc_info[2]) from e</pre>
+<pre class="line after"><span class="ws">            </span>else:</pre>
+<pre class="line after"><span class="ws">                </span>assert exc_info[1] is not None</pre>
+<pre class="line after"><span class="ws">                </span>raise exc_info[1].with_traceback(exc_info[2])</pre>
+<pre class="line after"><span class="ws">        </span>finally:</pre>
+<pre class="line after"><span class="ws">            </span>del self._reentrant_error</pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658549502800">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py"</cite>,
+      line <em class="line">1967</em>,
+      in <code class="function">_exec_single_context</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws">                            </span>context,</pre>
+<pre class="line before"><span class="ws">                        </span>):</pre>
+<pre class="line before"><span class="ws">                            </span>evt_handled = True</pre>
+<pre class="line before"><span class="ws">                            </span>break</pre>
+<pre class="line before"><span class="ws">                </span>if not evt_handled:</pre>
+<pre class="line current"><span class="ws">                    </span>self.dialect.do_execute(</pre>
+<pre class="line after"><span class="ws">                        </span>cursor, str_statement, effective_parameters, context</pre>
+<pre class="line after"><span class="ws">                    </span>)</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws">            </span>if self._has_events or self.engine._has_events:</pre>
+<pre class="line after"><span class="ws">                </span>self.dispatch.after_cursor_execute(</pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658549502912">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\default.py"</cite>,
+      line <em class="line">951</em>,
+      in <code class="function">do_execute</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws">    </span>def do_executemany(self, cursor, statement, parameters, context=None):</pre>
+<pre class="line before"><span class="ws">        </span>cursor.executemany(statement, parameters)</pre>
+<pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws">    </span>def do_execute(self, cursor, statement, parameters, context=None):</pre>
+<pre class="line current"><span class="ws">        </span>cursor.execute(statement, parameters)</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws">    </span>def do_execute_no_params(self, cursor, statement, context=None):</pre>
+<pre class="line after"><span class="ws">        </span>cursor.execute(statement)</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws">    </span>def is_disconnect(</pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658549665264">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\MySQLdb\cursors.py"</cite>,
+      line <em class="line">179</em>,
+      in <code class="function">execute</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws">        </span>self._discard()</pre>
+<pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws">        </span>mogrified_query = self._mogrify(query, args)</pre>
+<pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws">        </span>assert isinstance(mogrified_query, (bytes, bytearray))</pre>
+<pre class="line current"><span class="ws">        </span>res = self._query(mogrified_query)</pre>
+<pre class="line after"><span class="ws">        </span>return res</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws">    </span>def _mogrify(self, query, args=None):</pre>
+<pre class="line after"><span class="ws">        </span>&#34;&#34;&#34;Return query after binding args.&#34;&#34;&#34;</pre>
+<pre class="line after"><span class="ws">        </span>db = self._get_db()</pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658549704672">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\MySQLdb\cursors.py"</cite>,
+      line <em class="line">330</em>,
+      in <code class="function">_query</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws">    </span>def _query(self, q):</pre>
+<pre class="line before"><span class="ws">        </span>db = self._get_db()</pre>
+<pre class="line before"><span class="ws">        </span>self._result = None</pre>
+<pre class="line before"><span class="ws">        </span>self.rowcount = None</pre>
+<pre class="line before"><span class="ws">        </span>self.lastrowid = None</pre>
+<pre class="line current"><span class="ws">        </span>db.query(q)</pre>
+<pre class="line after"><span class="ws">        </span>self._do_get_result(db)</pre>
+<pre class="line after"><span class="ws">        </span>self._post_get_result()</pre>
+<pre class="line after"><span class="ws">        </span>self._executed = q</pre>
+<pre class="line after"><span class="ws">        </span>return self.rowcount</pre>
+<pre class="line after"><span class="ws"></span> </pre></div>
+</div>
+
+<li><div class="frame" id="frame-1658549704784">
+  <h4>File <cite class="filename">"D:\code\web_green\venv\lib\site-packages\MySQLdb\connections.py"</cite>,
+      line <em class="line">280</em>,
+      in <code class="function">query</code></h4>
+  <div class="source library"><pre class="line before"><span class="ws"></span> </pre>
+<pre class="line before"><span class="ws">    </span>def query(self, query):</pre>
+<pre class="line before"><span class="ws">        </span># Since _mysql releases GIL while querying, we need immutable buffer.</pre>
+<pre class="line before"><span class="ws">        </span>if isinstance(query, bytearray):</pre>
+<pre class="line before"><span class="ws">            </span>query = bytes(query)</pre>
+<pre class="line current"><span class="ws">        </span>_mysql.connection.query(self, query)</pre>
+<pre class="line after"><span class="ws"></span> </pre>
+<pre class="line after"><span class="ws">    </span>def _bytes_literal(self, bs):</pre>
+<pre class="line after"><span class="ws">        </span>assert isinstance(bs, (bytes, bytearray))</pre>
+<pre class="line after"><span class="ws">        </span>x = self.string_literal(bs)  # x is escaped and quoted bytes</pre>
+<pre class="line after"><span class="ws">        </span>if self._binary_prefix:</pre></div>
+</div>
+</ul>
+  <blockquote>sqlalchemy.exc.OperationalError: (MySQLdb.OperationalError) (1054, &#34;Unknown column &#39;p.name&#39; in &#39;field list&#39;&#34;)
+[SQL: 
+            WITH
+            -- CTE for Trading Platform Summaries (unchanged logic)
+            ul_summary AS (
+                SELECT
+                    project_id, generate_ym as production_ym,
+                    COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
+                FROM gzpt_unilateral_listings
+                WHERE project_id IN %s AND order_status = &#39;1&#39; 
+                GROUP BY project_id, production_ym
+            ),
+            off_summary AS (
+                SELECT
+                    project_id, generate_ym as production_ym,
+                    COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
+                FROM gzpt_bilateral_offline_trades
+                WHERE project_id IN %s AND order_status = &#39;3&#39; 
+                GROUP BY project_id, production_ym
+            ),
+            ol_summary AS (
+                SELECT
+                    project_id, generate_ym as production_ym,
+                    COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
+                FROM gzpt_bilateral_online_trades
+                WHERE project_id IN %s AND order_status = &#39;2&#39; 
+                GROUP BY project_id, production_ym
+            ),
+            bj_summary AS (
+                SELECT
+                    project_id, production_year_month as production_ym,
+                    COALESCE(SUM(CAST(transaction_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(transaction_quantity AS DECIMAL(15,2)) * CAST(transaction_price AS DECIMAL(15,2))), 0) as total_amt
+                FROM beijing_power_exchange_trades
+                WHERE project_id IN %s 
+                GROUP BY project_id, production_ym
+            ),
+            gz_summary AS (
+                SELECT
+                    project_id, CONCAT(SUBSTRING(product_date, 1, 4), &#39;-&#39;, LPAD(SUBSTRING(product_date, 6), 2, &#39;0&#39;)) as production_ym,
+                    COALESCE(SUM(CAST(gpc_certifi_num AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_cost AS DECIMAL(15,2))), 0) as total_amt
+                FROM guangzhou_power_exchange_trades
+                WHERE project_id IN %s 
+                GROUP BY project_id, production_ym
+            ),
+
+            -- CTE 1: Ledger-based metrics (ordinary_total, trading_platform_sold, avg_price)
+            -- 修复重复计算问题：先对台账表按项目-月份去重
+            LedgerMetrics AS (
+                SELECT
+                    ledger_distinct.province as dimension_value,
+                    COALESCE(SUM(CASE WHEN ledger_distinct.ordinary_quantity IS NOT NULL AND ledger_distinct.ordinary_quantity != &#39;&#39; THEN CAST(ledger_distinct.ordinary_quantity AS DECIMAL(15,2)) ELSE 0 END), 0) as ordinary_total,
+                    (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(ol.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0)) as trading_platform_sold,
+                    CASE
+                        WHEN (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(ol.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0)) &gt; 0
+                        THEN (COALESCE(SUM(ul.total_amt), 0) + COALESCE(SUM(off.total_amt), 0) + COALESCE(SUM(ol.total_amt), 0) + COALESCE(SUM(bj.total_amt), 0) + COALESCE(SUM(gz.total_amt), 0)) /
+                             (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(ol.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0))
+                        ELSE 0
+                    END as avg_price
+                FROM (
+                    -- 对台账表按项目-月份去重，避免重复计算
+                    SELECT DISTINCT
+                        p.id as project_id,
+                        p.name as project_name,
+                        p.province,
+                        p.city,
+                        p.secondary_unit,
+                        p.energy_type,
+                        n.production_year_month,
+                        n.ordinary_quantity
+                    FROM projects p
+                    JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
+                    WHERE p.id IN %s
+                      AND n.production_year_month &gt;= %s
+                      AND n.production_year_month &lt;= %s
+                      AND p.province IS NOT NULL
+                ) ledger_distinct
+                LEFT JOIN ul_summary ul ON ledger_distinct.project_id = ul.project_id AND ledger_distinct.production_year_month = ul.production_ym
+                LEFT JOIN off_summary off ON ledger_distinct.project_id = off.project_id AND ledger_distinct.production_year_month = off.production_ym
+                LEFT JOIN ol_summary ol ON ledger_distinct.project_id = ol.project_id AND ledger_distinct.production_year_month = ol.production_ym
+                LEFT JOIN bj_summary bj ON ledger_distinct.project_id = bj.project_id AND ledger_distinct.production_year_month = bj.production_ym
+                LEFT JOIN gz_summary gz ON ledger_distinct.project_id = gz.project_id AND ledger_distinct.production_year_month = gz.production_ym
+                GROUP BY ledger_distinct.province
+            ),
+
+            -- CTE 2: Direct query for Issued Platform metrics
+            IssuedMetrics AS (
+                SELECT
+                    p.province as dimension_value,
+                    COALESCE(SUM(CAST(tr.transaction_num AS DECIMAL(15,2))), 0) as issued_platform_sold
+                FROM projects p
+                JOIN nyj_transaction_records tr ON p.id = tr.project_id
+                WHERE p.id IN %s
+                  AND CONCAT(tr.production_year, &#39;-&#39;, LPAD(tr.production_month, 2, &#39;0&#39;)) &gt;= %s
+                  AND CONCAT(tr.production_year, &#39;-&#39;, LPAD(tr.production_month, 2, &#39;0&#39;)) &lt;= %s
+                   -- This is the transaction time filter string
+                  AND p.province IS NOT NULL
+                GROUP BY p.province
+            ),
+
+            -- Master list of all possible dimension values that appear in either calculation
+            AllDimensions AS (
+                SELECT dimension_value FROM LedgerMetrics
+                UNION
+                SELECT dimension_value FROM IssuedMetrics
+            )
+
+            -- Final SELECT to combine the two metrics
+            SELECT
+                d.dimension_value,
+                COALESCE(lm.ordinary_total, 0) as ordinary_total,
+                COALESCE(im.issued_platform_sold, 0) as issued_platform_sold,
+                COALESCE(lm.trading_platform_sold, 0) as trading_platform_sold,
+                COALESCE(lm.avg_price, 0) as avg_price
+            FROM AllDimensions d
+            LEFT JOIN LedgerMetrics lm ON d.dimension_value = lm.dimension_value
+            LEFT JOIN IssuedMetrics im ON d.dimension_value = im.dimension_value
+            ORDER BY ordinary_total DESC
+        ]
+[parameters: ((1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), &#39;0000-01&#39;, &#39;9999-12&#39;, (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), &#39;0000-01&#39;, &#39;9999-12&#39;)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+</blockquote>
+</div>
+
+<div class="plain">
+    <p>
+      This is the Copy/Paste friendly version of the traceback.
+    </p>
+    <textarea cols="50" rows="10" name="code" readonly>Traceback (most recent call last):
+  File &#34;D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py&#34;, line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File &#34;D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\default.py&#34;, line 951, in do_execute
+    cursor.execute(statement, parameters)
+  File &#34;D:\code\web_green\venv\lib\site-packages\MySQLdb\cursors.py&#34;, line 179, in execute
+    res = self._query(mogrified_query)
+  File &#34;D:\code\web_green\venv\lib\site-packages\MySQLdb\cursors.py&#34;, line 330, in _query
+    db.query(q)
+  File &#34;D:\code\web_green\venv\lib\site-packages\MySQLdb\connections.py&#34;, line 280, in query
+    _mysql.connection.query(self, query)
+MySQLdb.OperationalError: (1054, &#34;Unknown column &#39;p.name&#39; in &#39;field list&#39;&#34;)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File &#34;D:\code\web_green\venv\lib\site-packages\flask\app.py&#34;, line 1536, in __call__
+    return self.wsgi_app(environ, start_response)
+  File &#34;D:\code\web_green\venv\lib\site-packages\flask\app.py&#34;, line 1514, in wsgi_app
+    response = self.handle_exception(e)
+  File &#34;D:\code\web_green\venv\lib\site-packages\flask\app.py&#34;, line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File &#34;D:\code\web_green\venv\lib\site-packages\flask\app.py&#34;, line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File &#34;D:\code\web_green\venv\lib\site-packages\flask\app.py&#34;, line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File &#34;D:\code\web_green\venv\lib\site-packages\flask\app.py&#34;, line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+  File &#34;D:\code\web_green\venv\lib\site-packages\flask_login\utils.py&#34;, line 290, in decorated_view
+    return current_app.ensure_sync(func)(*args, **kwargs)
+  File &#34;D:\code\web_green\dashboard_routes.py&#34;, line 1367, in statistics
+    result = connection.execute(sql, sql_params).fetchall()
+  File &#34;D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py&#34;, line 1419, in execute
+    return meth(
+  File &#34;D:\code\web_green\venv\lib\site-packages\sqlalchemy\sql\elements.py&#34;, line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File &#34;D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py&#34;, line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File &#34;D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py&#34;, line 1846, in _execute_context
+    return self._exec_single_context(
+  File &#34;D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py&#34;, line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File &#34;D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py&#34;, line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File &#34;D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py&#34;, line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File &#34;D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\default.py&#34;, line 951, in do_execute
+    cursor.execute(statement, parameters)
+  File &#34;D:\code\web_green\venv\lib\site-packages\MySQLdb\cursors.py&#34;, line 179, in execute
+    res = self._query(mogrified_query)
+  File &#34;D:\code\web_green\venv\lib\site-packages\MySQLdb\cursors.py&#34;, line 330, in _query
+    db.query(q)
+  File &#34;D:\code\web_green\venv\lib\site-packages\MySQLdb\connections.py&#34;, line 280, in query
+    _mysql.connection.query(self, query)
+sqlalchemy.exc.OperationalError: (MySQLdb.OperationalError) (1054, &#34;Unknown column &#39;p.name&#39; in &#39;field list&#39;&#34;)
+[SQL: 
+            WITH
+            -- CTE for Trading Platform Summaries (unchanged logic)
+            ul_summary AS (
+                SELECT
+                    project_id, generate_ym as production_ym,
+                    COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
+                FROM gzpt_unilateral_listings
+                WHERE project_id IN %s AND order_status = &#39;1&#39; 
+                GROUP BY project_id, production_ym
+            ),
+            off_summary AS (
+                SELECT
+                    project_id, generate_ym as production_ym,
+                    COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
+                FROM gzpt_bilateral_offline_trades
+                WHERE project_id IN %s AND order_status = &#39;3&#39; 
+                GROUP BY project_id, production_ym
+            ),
+            ol_summary AS (
+                SELECT
+                    project_id, generate_ym as production_ym,
+                    COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
+                FROM gzpt_bilateral_online_trades
+                WHERE project_id IN %s AND order_status = &#39;2&#39; 
+                GROUP BY project_id, production_ym
+            ),
+            bj_summary AS (
+                SELECT
+                    project_id, production_year_month as production_ym,
+                    COALESCE(SUM(CAST(transaction_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(transaction_quantity AS DECIMAL(15,2)) * CAST(transaction_price AS DECIMAL(15,2))), 0) as total_amt
+                FROM beijing_power_exchange_trades
+                WHERE project_id IN %s 
+                GROUP BY project_id, production_ym
+            ),
+            gz_summary AS (
+                SELECT
+                    project_id, CONCAT(SUBSTRING(product_date, 1, 4), &#39;-&#39;, LPAD(SUBSTRING(product_date, 6), 2, &#39;0&#39;)) as production_ym,
+                    COALESCE(SUM(CAST(gpc_certifi_num AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_cost AS DECIMAL(15,2))), 0) as total_amt
+                FROM guangzhou_power_exchange_trades
+                WHERE project_id IN %s 
+                GROUP BY project_id, production_ym
+            ),
+
+            -- CTE 1: Ledger-based metrics (ordinary_total, trading_platform_sold, avg_price)
+            -- 修复重复计算问题：先对台账表按项目-月份去重
+            LedgerMetrics AS (
+                SELECT
+                    ledger_distinct.province as dimension_value,
+                    COALESCE(SUM(CASE WHEN ledger_distinct.ordinary_quantity IS NOT NULL AND ledger_distinct.ordinary_quantity != &#39;&#39; THEN CAST(ledger_distinct.ordinary_quantity AS DECIMAL(15,2)) ELSE 0 END), 0) as ordinary_total,
+                    (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(ol.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0)) as trading_platform_sold,
+                    CASE
+                        WHEN (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(ol.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0)) &gt; 0
+                        THEN (COALESCE(SUM(ul.total_amt), 0) + COALESCE(SUM(off.total_amt), 0) + COALESCE(SUM(ol.total_amt), 0) + COALESCE(SUM(bj.total_amt), 0) + COALESCE(SUM(gz.total_amt), 0)) /
+                             (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(ol.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0))
+                        ELSE 0
+                    END as avg_price
+                FROM (
+                    -- 对台账表按项目-月份去重，避免重复计算
+                    SELECT DISTINCT
+                        p.id as project_id,
+                        p.name as project_name,
+                        p.province,
+                        p.city,
+                        p.secondary_unit,
+                        p.energy_type,
+                        n.production_year_month,
+                        n.ordinary_quantity
+                    FROM projects p
+                    JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
+                    WHERE p.id IN %s
+                      AND n.production_year_month &gt;= %s
+                      AND n.production_year_month &lt;= %s
+                      AND p.province IS NOT NULL
+                ) ledger_distinct
+                LEFT JOIN ul_summary ul ON ledger_distinct.project_id = ul.project_id AND ledger_distinct.production_year_month = ul.production_ym
+                LEFT JOIN off_summary off ON ledger_distinct.project_id = off.project_id AND ledger_distinct.production_year_month = off.production_ym
+                LEFT JOIN ol_summary ol ON ledger_distinct.project_id = ol.project_id AND ledger_distinct.production_year_month = ol.production_ym
+                LEFT JOIN bj_summary bj ON ledger_distinct.project_id = bj.project_id AND ledger_distinct.production_year_month = bj.production_ym
+                LEFT JOIN gz_summary gz ON ledger_distinct.project_id = gz.project_id AND ledger_distinct.production_year_month = gz.production_ym
+                GROUP BY ledger_distinct.province
+            ),
+
+            -- CTE 2: Direct query for Issued Platform metrics
+            IssuedMetrics AS (
+                SELECT
+                    p.province as dimension_value,
+                    COALESCE(SUM(CAST(tr.transaction_num AS DECIMAL(15,2))), 0) as issued_platform_sold
+                FROM projects p
+                JOIN nyj_transaction_records tr ON p.id = tr.project_id
+                WHERE p.id IN %s
+                  AND CONCAT(tr.production_year, &#39;-&#39;, LPAD(tr.production_month, 2, &#39;0&#39;)) &gt;= %s
+                  AND CONCAT(tr.production_year, &#39;-&#39;, LPAD(tr.production_month, 2, &#39;0&#39;)) &lt;= %s
+                   -- This is the transaction time filter string
+                  AND p.province IS NOT NULL
+                GROUP BY p.province
+            ),
+
+            -- Master list of all possible dimension values that appear in either calculation
+            AllDimensions AS (
+                SELECT dimension_value FROM LedgerMetrics
+                UNION
+                SELECT dimension_value FROM IssuedMetrics
+            )
+
+            -- Final SELECT to combine the two metrics
+            SELECT
+                d.dimension_value,
+                COALESCE(lm.ordinary_total, 0) as ordinary_total,
+                COALESCE(im.issued_platform_sold, 0) as issued_platform_sold,
+                COALESCE(lm.trading_platform_sold, 0) as trading_platform_sold,
+                COALESCE(lm.avg_price, 0) as avg_price
+            FROM AllDimensions d
+            LEFT JOIN LedgerMetrics lm ON d.dimension_value = lm.dimension_value
+            LEFT JOIN IssuedMetrics im ON d.dimension_value = im.dimension_value
+            ORDER BY ordinary_total DESC
+        ]
+[parameters: ((1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), &#39;0000-01&#39;, &#39;9999-12&#39;, (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), &#39;0000-01&#39;, &#39;9999-12&#39;)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+</textarea>
+</div>
+<div class="explanation">
+  The debugger caught an exception in your WSGI application.  You can now
+  look at the traceback which led to the error.  <span class="nojavascript">
+  If you enable JavaScript you can also use additional features such as code
+  execution (if the evalex feature is enabled), automatic pasting of the
+  exceptions and much more.</span>
+</div>
+      <div class="footer">
+        Brought to you by <strong class="arthur">DON'T PANIC</strong>, your
+        friendly Werkzeug powered traceback interpreter.
+      </div>
+    </div>
+
+    <div class="pin-prompt">
+      <div class="inner">
+        <h3>Console Locked</h3>
+        <p>
+          The console is locked and needs to be unlocked by entering the PIN.
+          You can find the PIN printed out on the standard output of your
+          shell that runs the server.
+        <form>
+          <p>PIN:
+            <input type=text name=pin size=14>
+            <input type=submit name=btn value="Confirm Pin">
+        </form>
+      </div>
+    </div>
+  </body>
+</html>
+
+<!--
+
+Traceback (most recent call last):
+  File "D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+  File "D:\code\web_green\venv\lib\site-packages\MySQLdb\cursors.py", line 179, in execute
+    res = self._query(mogrified_query)
+  File "D:\code\web_green\venv\lib\site-packages\MySQLdb\cursors.py", line 330, in _query
+    db.query(q)
+  File "D:\code\web_green\venv\lib\site-packages\MySQLdb\connections.py", line 280, in query
+    _mysql.connection.query(self, query)
+MySQLdb.OperationalError: (1054, "Unknown column 'p.name' in 'field list'")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\code\web_green\venv\lib\site-packages\flask\app.py", line 1536, in __call__
+    return self.wsgi_app(environ, start_response)
+  File "D:\code\web_green\venv\lib\site-packages\flask\app.py", line 1514, in wsgi_app
+    response = self.handle_exception(e)
+  File "D:\code\web_green\venv\lib\site-packages\flask\app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "D:\code\web_green\venv\lib\site-packages\flask\app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "D:\code\web_green\venv\lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "D:\code\web_green\venv\lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+  File "D:\code\web_green\venv\lib\site-packages\flask_login\utils.py", line 290, in decorated_view
+    return current_app.ensure_sync(func)(*args, **kwargs)
+  File "D:\code\web_green\dashboard_routes.py", line 1367, in statistics
+    result = connection.execute(sql, sql_params).fetchall()
+  File "D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+  File "D:\code\web_green\venv\lib\site-packages\sqlalchemy\sql\elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "D:\code\web_green\venv\lib\site-packages\sqlalchemy\engine\default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+  File "D:\code\web_green\venv\lib\site-packages\MySQLdb\cursors.py", line 179, in execute
+    res = self._query(mogrified_query)
+  File "D:\code\web_green\venv\lib\site-packages\MySQLdb\cursors.py", line 330, in _query
+    db.query(q)
+  File "D:\code\web_green\venv\lib\site-packages\MySQLdb\connections.py", line 280, in query
+    _mysql.connection.query(self, query)
+sqlalchemy.exc.OperationalError: (MySQLdb.OperationalError) (1054, "Unknown column 'p.name' in 'field list'")
+[SQL: 
+            WITH
+            - CTE for Trading Platform Summaries (unchanged logic)
+            ul_summary AS (
+                SELECT
+                    project_id, generate_ym as production_ym,
+                    COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
+                FROM gzpt_unilateral_listings
+                WHERE project_id IN %s AND order_status = '1' 
+                GROUP BY project_id, production_ym
+            ),
+            off_summary AS (
+                SELECT
+                    project_id, generate_ym as production_ym,
+                    COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
+                FROM gzpt_bilateral_offline_trades
+                WHERE project_id IN %s AND order_status = '3' 
+                GROUP BY project_id, production_ym
+            ),
+            ol_summary AS (
+                SELECT
+                    project_id, generate_ym as production_ym,
+                    COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
+                FROM gzpt_bilateral_online_trades
+                WHERE project_id IN %s AND order_status = '2' 
+                GROUP BY project_id, production_ym
+            ),
+            bj_summary AS (
+                SELECT
+                    project_id, production_year_month as production_ym,
+                    COALESCE(SUM(CAST(transaction_quantity AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(transaction_quantity AS DECIMAL(15,2)) * CAST(transaction_price AS DECIMAL(15,2))), 0) as total_amt
+                FROM beijing_power_exchange_trades
+                WHERE project_id IN %s 
+                GROUP BY project_id, production_ym
+            ),
+            gz_summary AS (
+                SELECT
+                    project_id, CONCAT(SUBSTRING(product_date, 1, 4), '-', LPAD(SUBSTRING(product_date, 6), 2, '0')) as production_ym,
+                    COALESCE(SUM(CAST(gpc_certifi_num AS DECIMAL(15,2))), 0) as total_qty,
+                    COALESCE(SUM(CAST(total_cost AS DECIMAL(15,2))), 0) as total_amt
+                FROM guangzhou_power_exchange_trades
+                WHERE project_id IN %s 
+                GROUP BY project_id, production_ym
+            ),
+
+            - CTE 1: Ledger-based metrics (ordinary_total, trading_platform_sold, avg_price)
+            - 修复重复计算问题：先对台账表按项目-月份去重
+            LedgerMetrics AS (
+                SELECT
+                    ledger_distinct.province as dimension_value,
+                    COALESCE(SUM(CASE WHEN ledger_distinct.ordinary_quantity IS NOT NULL AND ledger_distinct.ordinary_quantity != '' THEN CAST(ledger_distinct.ordinary_quantity AS DECIMAL(15,2)) ELSE 0 END), 0) as ordinary_total,
+                    (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(ol.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0)) as trading_platform_sold,
+                    CASE
+                        WHEN (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(ol.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0)) > 0
+                        THEN (COALESCE(SUM(ul.total_amt), 0) + COALESCE(SUM(off.total_amt), 0) + COALESCE(SUM(ol.total_amt), 0) + COALESCE(SUM(bj.total_amt), 0) + COALESCE(SUM(gz.total_amt), 0)) /
+                             (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(ol.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0))
+                        ELSE 0
+                    END as avg_price
+                FROM (
+                    - 对台账表按项目-月份去重，避免重复计算
+                    SELECT DISTINCT
+                        p.id as project_id,
+                        p.name as project_name,
+                        p.province,
+                        p.city,
+                        p.secondary_unit,
+                        p.energy_type,
+                        n.production_year_month,
+                        n.ordinary_quantity
+                    FROM projects p
+                    JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
+                    WHERE p.id IN %s
+                      AND n.production_year_month >= %s
+                      AND n.production_year_month <= %s
+                      AND p.province IS NOT NULL
+                ) ledger_distinct
+                LEFT JOIN ul_summary ul ON ledger_distinct.project_id = ul.project_id AND ledger_distinct.production_year_month = ul.production_ym
+                LEFT JOIN off_summary off ON ledger_distinct.project_id = off.project_id AND ledger_distinct.production_year_month = off.production_ym
+                LEFT JOIN ol_summary ol ON ledger_distinct.project_id = ol.project_id AND ledger_distinct.production_year_month = ol.production_ym
+                LEFT JOIN bj_summary bj ON ledger_distinct.project_id = bj.project_id AND ledger_distinct.production_year_month = bj.production_ym
+                LEFT JOIN gz_summary gz ON ledger_distinct.project_id = gz.project_id AND ledger_distinct.production_year_month = gz.production_ym
+                GROUP BY ledger_distinct.province
+            ),
+
+            - CTE 2: Direct query for Issued Platform metrics
+            IssuedMetrics AS (
+                SELECT
+                    p.province as dimension_value,
+                    COALESCE(SUM(CAST(tr.transaction_num AS DECIMAL(15,2))), 0) as issued_platform_sold
+                FROM projects p
+                JOIN nyj_transaction_records tr ON p.id = tr.project_id
+                WHERE p.id IN %s
+                  AND CONCAT(tr.production_year, '-', LPAD(tr.production_month, 2, '0')) >= %s
+                  AND CONCAT(tr.production_year, '-', LPAD(tr.production_month, 2, '0')) <= %s
+                   - This is the transaction time filter string
+                  AND p.province IS NOT NULL
+                GROUP BY p.province
+            ),
+
+            - Master list of all possible dimension values that appear in either calculation
+            AllDimensions AS (
+                SELECT dimension_value FROM LedgerMetrics
+                UNION
+                SELECT dimension_value FROM IssuedMetrics
+            )
+
+            - Final SELECT to combine the two metrics
+            SELECT
+                d.dimension_value,
+                COALESCE(lm.ordinary_total, 0) as ordinary_total,
+                COALESCE(im.issued_platform_sold, 0) as issued_platform_sold,
+                COALESCE(lm.trading_platform_sold, 0) as trading_platform_sold,
+                COALESCE(lm.avg_price, 0) as avg_price
+            FROM AllDimensions d
+            LEFT JOIN LedgerMetrics lm ON d.dimension_value = lm.dimension_value
+            LEFT JOIN IssuedMetrics im ON d.dimension_value = im.dimension_value
+            ORDER BY ordinary_total DESC
+        ]
+[parameters: ((1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), '0000-01', '9999-12', (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40 ... (2082 characters truncated) ...  470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 495, 496, 497, 500, 501, 502, 503), '0000-01', '9999-12')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+
+
+-->

@@ -42,6 +42,10 @@ class Project(db.Model):
     is_filed = db.Column(db.Boolean, default=False)
     is_beijing_registered = db.Column(db.Boolean, default=False)
     is_guangzhou_registered = db.Column(db.Boolean, default=False)
+    is_green_cert_registered = db.Column(db.Boolean, default=True)  # 是否完成绿证交易平台注册
+    has_beijing_transaction = db.Column(db.Boolean, default=True)   # 在北交做过交易
+    has_guangzhou_transaction = db.Column(db.Boolean, default=True) # 在广交做过交易
+    has_green_cert_transaction = db.Column(db.Boolean, default=True) # 在绿证交易平台做过交易
 
     # --- 新增字段，用于存储JSON数据 ---
     data_nyj = db.Column(db.Text, nullable=True)  # 能源局网站
@@ -81,3 +85,31 @@ class SystemSetting(db.Model):
     
     def __repr__(self):
         return f'<SystemSetting {self.key}: {self.value}>'
+
+class FAQ(db.Model):
+    __tablename__ = 'faqs'
+    id = db.Column(db.Integer, primary_key=True)
+    question = db.Column(db.Text, nullable=False)
+    answer = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    
+    # 关联用户
+    creator = db.relationship('User', backref='faqs')
+    
+    def __repr__(self):
+        return f'<FAQ {self.id}: {self.question[:50]}...>'
+
+
+class Customer(db.Model):
+    __tablename__ = 'customers'
+    customer_name = db.Column(db.String(200), primary_key=True, nullable=False)
+    customer_type = db.Column(db.String(100), nullable=True)
+    province = db.Column(db.String(100), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    
+    def __repr__(self):
+        return f'<Customer {self.customer_name}>'

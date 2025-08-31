@@ -1,0 +1,479 @@
+{% extends "dashboard_base.html" %}
+
+{% block title %}成交地图 - 绿证项目数据仪表盘{% endblock %}
+
+{% block extra_css %}
+<style>
+    .map-container {
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.07);
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .map-header {
+        border-bottom: 2px solid #e9ecef;
+        padding-bottom: 15px;
+        margin-bottom: 20px;
+    }
+    .map-title {
+        color: #495057;
+        font-weight: 600;
+        margin: 0;
+    }
+    .map-subtitle {
+        color: #6c757d;
+        font-size: 0.9rem;
+        margin: 5px 0 0 0;
+    }
+    #chinaMap {
+        width: 100%;
+        height: 600px;
+    }
+    .stats-summary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 15px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .stats-item {
+        text-align: center;
+    }
+    .stats-number {
+        font-size: 2rem;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+    .stats-label {
+        font-size: 0.9rem;
+        opacity: 0.9;
+    }
+    .loading-spinner {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 400px;
+        flex-direction: column;
+    }
+    .spinner-border {
+        width: 3rem;
+        height: 3rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2 class="mb-1">成交地图</h2>
+                    <p class="text-muted mb-0">各省份绿证成交量分布热力图</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+
+    <!-- 统计概览 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="stats-summary">
+                <div class="row">
+                    <div class="col-md-3 stats-item">
+                        <div class="stats-number" id="totalProvinces">-</div>
+                        <div class="stats-label">有成交省份</div>
+                    </div>
+                    <div class="col-md-3 stats-item">
+                        <div class="stats-number" id="totalVolume">-</div>
+                        <div class="stats-label">总成交量（张）</div>
+                    </div>
+                    <div class="col-md-3 stats-item">
+                        <div class="stats-number" id="topProvince">-</div>
+                        <div class="stats-label">成交量最高省份</div>
+                    </div>
+                    <div class="col-md-3 stats-item">
+                        <div class="stats-number" id="topVolume">-</div>
+                        <div class="stats-label">最高成交量（张）</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 地图容器 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="map-container">
+                <div class="map-header">
+                    <h4 class="map-title">中国各省份绿证成交量热力图</h4>
+                    <p class="map-subtitle">颜色深浅代表成交量水平，鼠标悬停查看详细数据</p>
+                </div>
+                <div id="mapLoading" class="loading-spinner">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <p class="mt-3 text-muted">正在加载地图数据...</p>
+                </div>
+                <div id="chinaMap" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- ECharts -->
+<script src="{{ url_for('static', filename='libs/echarts/echarts.min.js') }}"></script>
+
+<script>
+// 全局变量
+let chinaMapChart = null;
+let provinceData = [];
+
+// 页面加载完成后初始化
+$(document).ready(function() {
+    loadChinaMapData();
+});
+
+// 加载中国地图数据
+function loadChinaMapData() {
+    // 使用本地地图数据
+    fetch('{{ url_for("static", filename="libs/echarts/china.json") }}')
+        .then(response => response.json())
+        .then(chinaJson => {
+            // 注册地图
+            echarts.registerMap('china', chinaJson);
+            initMap();
+            loadProvinceData();
+        })
+        .catch(error => {
+            console.error('加载地图数据失败:', error);
+            // 如果地图数据加载失败，使用柱状图显示
+            initBarChart();
+            loadProvinceData();
+        });
+}
+
+// 使用简化数据初始化地图
+function initMapWithSimpleData() {
+    // 如果地图数据加载失败，使用柱状图显示省份数据
+    initBarChart();
+}
+
+// 初始化地图
+function initMap() {
+    const mapContainer = document.getElementById('chinaMap');
+    // 确保容器可见并有正确的尺寸
+    mapContainer.style.display = 'block';
+    mapContainer.style.width = '100%';
+    mapContainer.style.height = '600px';
+    
+    chinaMapChart = echarts.init(mapContainer);
+    
+    const option = {
+        title: {
+            text: '中国各省份绿证成交量热力图',
+            subtext: '基于客户省份信息统计',
+            left: 'center',
+            top: '2%',
+            textStyle: {
+                fontSize: 24,
+                color: '#333'
+            }
+        },
+        tooltip: {
+            trigger: 'item',
+            formatter: function(params) {
+                return `${params.name}<br/>成交量: ${params.value ? params.value.toLocaleString() : 0} 张`;
+            }
+        },
+        visualMap: {
+            min: 0,
+            max: 1000,
+            left: '5%',
+            top: 'bottom',
+            text: ['高', '低'],
+            calculable: true,
+            inRange: {
+                color: ['#E0F3F8', '#ABD9E9', '#74ADD1', '#4575B4', '#313695']
+            },
+            textStyle: {
+                color: '#555'
+            }
+        },
+        series: [{
+            name: '绿证成交量',
+            type: 'map',
+            map: 'china',
+            roam: true,
+            label: {
+                show: true,
+                color: '#333',
+                fontSize: 10
+            },
+            itemStyle: {
+                borderColor: '#fff',
+                borderWidth: 1
+            },
+            emphasis: {
+                label: {
+                    color: '#000',
+                    fontSize: 12,
+                    fontWeight: 'bold'
+                },
+                itemStyle: {
+                    areaColor: '#FFD700'
+                }
+            },
+            data: []
+        }]
+    };
+    
+    chinaMapChart.setOption(option);
+    
+    // 强制调整图表尺寸
+    setTimeout(() => {
+        if (chinaMapChart) {
+            chinaMapChart.resize();
+        }
+    }, 100);
+    
+    // 响应式调整
+    window.addEventListener('resize', function() {
+        if (chinaMapChart) {
+            chinaMapChart.resize();
+        }
+    });
+}
+
+// 加载省份数据
+function loadProvinceData() {
+    // 使用不限时间的查询参数，与客户分析页面保持一致
+    const params = new URLSearchParams({
+        'start_date': '2000-01',
+        'end_date': '2099-01',
+        'transaction_start_date': '2000-01-01',
+        'transaction_end_date': '2099-01-01'
+    });
+    
+    const url = `/dashboard/api/province_transaction_data?${params.toString()}`;
+    
+    fetch(url)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('网络请求失败');
+            }
+            // 检查是否返回了HTML（登录页面）
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('text/html')) {
+                throw new Error('需要登录');
+            }
+            return response.json();
+        })
+        .then(data => {
+            provinceData = data.province_data || [];
+            updateMap();
+            updateStats();
+            hideLoading();
+        })
+        .catch(error => {
+            console.error('加载省份数据失败:', error);
+            if (error.message === '需要登录') {
+                showError('请先登录系统');
+            } else {
+                // 使用模拟数据进行演示
+                loadMockData();
+            }
+            hideLoading();
+        });
+}
+
+
+
+// 初始化柱状图（备选方案）
+function initBarChart() {
+    const mapContainer = document.getElementById('chinaMap');
+    chinaMapChart = echarts.init(mapContainer);
+    
+    const option = {
+        title: {
+            text: '各省份绿证成交量',
+            left: 'center',
+            textStyle: {
+                fontSize: 16,
+                color: '#495057'
+            }
+        },
+        tooltip: {
+            trigger: 'axis',
+            axisPointer: {
+                type: 'shadow'
+            },
+            formatter: function(params) {
+                return `${params[0].name}<br/>成交量: ${params[0].value.toLocaleString()} 张`;
+            }
+        },
+        grid: {
+            left: '3%',
+            right: '4%',
+            bottom: '3%',
+            containLabel: true
+        },
+        xAxis: {
+            type: 'category',
+            data: [],
+            axisLabel: {
+                rotate: 45,
+                fontSize: 10
+            }
+        },
+        yAxis: {
+            type: 'value',
+            name: '成交量（张）',
+            axisLabel: {
+                formatter: function(value) {
+                    return value.toLocaleString();
+                }
+            }
+        },
+        series: [{
+            name: '成交量',
+            type: 'bar',
+            data: [],
+            itemStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                    {offset: 0, color: '#667eea'},
+                    {offset: 1, color: '#764ba2'}
+                ])
+            }
+        }]
+    };
+    
+    chinaMapChart.setOption(option);
+    
+    // 响应式调整
+    window.addEventListener('resize', function() {
+        if (chinaMapChart) {
+            chinaMapChart.resize();
+        }
+    });
+}
+
+// 更新地图数据
+function updateMap() {
+    if (!chinaMapChart || !provinceData) return;
+    
+    // 检查当前图表类型
+    const currentOption = chinaMapChart.getOption();
+    if (currentOption.series[0].type === 'map') {
+        // 地图模式
+        const maxValue = provinceData.length > 0 ? Math.max(...provinceData.map(item => item.value)) : 1000;
+        
+        const option = {
+            visualMap: {
+                max: Math.max(maxValue, 100)
+            },
+            series: [{
+                data: provinceData
+            }]
+        };
+        
+        chinaMapChart.setOption(option);
+    } else {
+        // 柱状图模式
+        updateBarChart();
+    }
+}
+
+// 更新柱状图数据
+function updateBarChart() {
+    if (!chinaMapChart || !provinceData) return;
+    
+    const provinces = provinceData.map(item => item.name);
+    const values = provinceData.map(item => item.value);
+    
+    const option = {
+        xAxis: {
+            data: provinces
+        },
+        series: [{
+            data: values
+        }]
+    };
+    
+    chinaMapChart.setOption(option);
+}
+
+// 更新统计信息
+function updateStats() {
+    if (!provinceData || provinceData.length === 0) {
+        $('#totalProvinces').text('0');
+        $('#totalVolume').text('0');
+        $('#topProvince').text('-');
+        $('#topVolume').text('0');
+        return;
+    }
+    
+    const totalProvinces = provinceData.length;
+    const totalVolume = provinceData.reduce((sum, item) => sum + item.value, 0);
+    const topProvince = provinceData[0]; // 数据已按成交量降序排序
+    
+    $('#totalProvinces').text(totalProvinces);
+    $('#totalVolume').text(totalVolume.toLocaleString());
+    $('#topProvince').text(topProvince.name);
+    $('#topVolume').text(topProvince.value.toLocaleString());
+}
+
+// 隐藏加载动画
+function hideLoading() {
+    $('#mapLoading').hide();
+    $('#chinaMap').show();
+    
+    // 确保地图容器正确显示后调整尺寸
+    setTimeout(() => {
+        if (chinaMapChart) {
+            chinaMapChart.resize();
+        }
+    }, 200);
+}
+
+// 加载模拟数据
+function loadMockData() {
+    // 中国省份列表
+    const provinces = [
+        '北京', '天津', '河北', '山西', '内蒙古', '辽宁', '吉林', '黑龙江', 
+        '上海', '江苏', '浙江', '安徽', '福建', '江西', '山东', '河南', 
+        '湖北', '湖南', '广东', '广西', '海南', '重庆', '四川', '贵州', 
+        '云南', '西藏', '陕西', '甘肃', '青海', '宁夏', '新疆'
+    ];
+    
+    // 生成模拟数据
+    provinceData = provinces.map(province => {
+        return {
+            name: province,
+            value: Math.round(Math.random() * 5000) + 100
+        };
+    });
+    
+    updateMap();
+    updateStats();
+    
+    // 显示模拟数据提示
+    showError('当前显示模拟数据，请登录查看真实数据');
+}
+
+// 显示错误信息
+function showError(message) {
+    $('#mapLoading').html(`
+        <div class="text-center">
+            <i class="bi bi-exclamation-triangle text-warning" style="font-size: 3rem;"></i>
+            <p class="mt-3 text-muted">${message}</p>
+            <button class="btn btn-primary" onclick="location.reload()">重新加载</button>
+        </div>
+    `);
+}
+</script>
+{% endblock %}

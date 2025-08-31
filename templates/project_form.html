@@ -94,6 +94,24 @@
             <input class="form-check-input" type="checkbox" id="is_guangzhou_registered" name="is_guangzhou_registered" {{ 'checked' if project.is_guangzhou_registered else '' }}>
             <label class="form-check-label" for="is_guangzhou_registered">是否完成广交注册</label>
         </div>
+        <div class="form-check form-check-inline">
+            <input class="form-check-input" type="checkbox" id="is_green_cert_registered" name="is_green_cert_registered" {{ 'checked' if project.is_green_cert_registered else '' }}>
+            <label class="form-check-label" for="is_green_cert_registered">是否完成绿证交易平台注册</label>
+        </div>
+    </div>
+    <div class="mb-3">
+        <div class="form-check form-check-inline">
+            <input class="form-check-input" type="checkbox" id="has_beijing_transaction" name="has_beijing_transaction" {{ 'checked' if project.has_beijing_transaction else '' }}>
+            <label class="form-check-label" for="has_beijing_transaction">在北交做过交易</label>
+        </div>
+        <div class="form-check form-check-inline">
+            <input class="form-check-input" type="checkbox" id="has_guangzhou_transaction" name="has_guangzhou_transaction" {{ 'checked' if project.has_guangzhou_transaction else '' }}>
+            <label class="form-check-label" for="has_guangzhou_transaction">在广交做过交易</label>
+        </div>
+        <div class="form-check form-check-inline">
+            <input class="form-check-input" type="checkbox" id="has_green_cert_transaction" name="has_green_cert_transaction" {{ 'checked' if project.has_green_cert_transaction else '' }}>
+            <label class="form-check-label" for="has_green_cert_transaction">在绿证交易平台做过交易</label>
+        </div>
     </div>
     <button type="submit" class="btn btn-primary">保存项目</button>
     <a href="{{ url_for('index') }}" class="btn btn-secondary">取消</a>

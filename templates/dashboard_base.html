@@ -38,6 +38,62 @@
             margin-right: 10px;
             width: 20px;
         }
+        /* 展开式菜单样式 */
+        .sidebar .menu-item {
+            margin: 5px 0;
+        }
+        .sidebar .menu-toggle {
+            color: rgba(255,255,255,0.8);
+            margin: 5px 0;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 15px;
+            text-decoration: none;
+        }
+        .sidebar .menu-toggle:hover, .sidebar .menu-toggle.active {
+            background-color: rgba(255,255,255,0.2);
+            color: white;
+            transform: translateX(5px);
+            text-decoration: none;
+        }
+        .sidebar .menu-toggle i.menu-icon {
+            margin-right: 10px;
+            width: 20px;
+        }
+        .sidebar .menu-toggle .arrow {
+            transition: transform 0.3s ease;
+            font-size: 12px;
+        }
+        .sidebar .menu-toggle.expanded .arrow {
+            transform: rotate(90deg);
+        }
+        .sidebar .submenu {
+             max-height: 0;
+             overflow: hidden;
+             transition: max-height 0.3s ease;
+             margin-top: 5px;
+         }
+        .sidebar .submenu.expanded {
+            max-height: 200px;
+        }
+        .sidebar .submenu-item {
+            color: rgba(255,255,255,0.7);
+            padding: 8px 15px 8px 45px;
+            border-radius: 6px;
+            margin: 2px 10px;
+            transition: all 0.3s ease;
+            display: block;
+            text-decoration: none;
+        }
+        .sidebar .submenu-item:hover, .sidebar .submenu-item.active {
+            background-color: rgba(255,255,255,0.15);
+            color: white;
+            text-decoration: none;
+        }
         .main-content {
             background-color: #f8f9fa;
             min-height: 100vh;
@@ -105,10 +161,10 @@
             <!-- 侧边栏 -->
             <div class="sidebar p-0" style="width: 250px; flex-shrink: 0; position: fixed; height: 100vh; overflow-y: auto; z-index: 1030;">
                 <div class="p-3">
-                    <h4 class="text-white mb-4">
+                    <h5 class="text-white mb-4">
                         <i class="bi bi-patch-check"></i>
-                        绿证管理平台
-                    </h4>
+                        绿证管理平台测试版
+                    </h5>
                     <nav class="nav flex-column">
                         <a class="nav-link {% if request.endpoint == 'dashboard.overview' %}active{% endif %}" href="{{ url_for('dashboard.overview') }}">
                             <i class="bi bi-speedometer2"></i>数据概览
@@ -117,22 +173,34 @@
                             <i class="bi bi-table"></i>原始数据查看
                         </a>
                         <a class="nav-link {% if request.endpoint == 'dashboard.transaction_analysis' %}active{% endif %}" href="{{ url_for('dashboard.transaction_analysis') }}">
-                            <i class="bi bi-calendar3"></i>分月汇总
+                            <i class="bi bi-calendar3"></i>核发与成交
                         </a>
                         <a class="nav-link {% if request.endpoint == 'dashboard.statistics' %}active{% endif %}" href="{{ url_for('dashboard.statistics') }}">
                             <i class="bi bi-bar-chart"></i>聚合分析
                         </a>
-                        <a class="nav-link {% if request.endpoint == 'dashboard.customer_analysis' %}active{% endif %}" href="{{ url_for('dashboard.customer_analysis') }}">
-                            <i class="bi bi-people-fill"></i>客户分析
-                        </a>
+                        <!-- 客户分析展开菜单 -->
+                        <div class="menu-item">
+                            <a class="menu-toggle {% if request.endpoint in ['dashboard.customer_transactions', 'dashboard.customer_info', 'dashboard.customer_map'] %}expanded{% endif %}" href="#" onclick="toggleSubmenu(this)">
+                                <span><i class="bi bi-people-fill menu-icon"></i>客户分析</span>
+                                <i class="bi bi-chevron-right arrow"></i>
+                            </a>
+                            <div class="submenu {% if request.endpoint in ['dashboard.customer_transactions', 'dashboard.customer_info', 'dashboard.customer_map'] %}expanded{% endif %}">
+                                <a class="submenu-item {% if request.endpoint == 'dashboard.customer_transactions' %}active{% endif %}" href="{{ url_for('dashboard.customer_transactions') }}">客户成交情况</a>
+                                <a class="submenu-item {% if request.endpoint == 'dashboard.customer_info' %}active{% endif %}" href="{{ url_for('dashboard.customer_info') }}">客户信息</a>
+                                <a class="submenu-item {% if request.endpoint == 'dashboard.customer_map' %}active{% endif %}" href="{{ url_for('dashboard.customer_map') }}">成交地图</a>
+                            </div>
+                        </div>
                         <a class="nav-link {% if request.endpoint == 'dashboard.data_submission_time' %}active{% endif %}" href="{{ url_for('dashboard.data_submission_time') }}">
-                            <i class="bi bi-clock-history"></i>数据提交时间
+                            <i class="bi bi-clock-history"></i>数据更新管理
                         </a>
                         <a class="nav-link {% if request.endpoint == 'dashboard.expected_price' %}active{% endif %}" href="{{ url_for('dashboard.expected_price') }}">
                             <i class="bi bi-currency-yen"></i>期望价格
                         </a>
                         <a class="nav-link {% if request.endpoint == 'dashboard.projects' %}active{% endif %}" href="{{ url_for('dashboard.projects') }}">
-                            <i class="bi bi-kanban"></i>项目管理
+                            <i class="bi bi-kanban"></i>项目基本信息
+                        </a>
+                        <a class="nav-link {% if request.endpoint == 'dashboard.faq' %}active{% endif %}" href="{{ url_for('dashboard.faq') }}">
+                            <i class="bi bi-question-circle"></i>常见问题
                         </a>
                         <hr class="my-3" style="color: rgba(255,255,255,0.3);">
                         {% if current_user.is_admin %}
@@ -159,7 +227,9 @@
                                     <i class="bi bi-calendar3 me-2" style="margin-left: 10px;"></i>
                                 {% elif request.endpoint == 'dashboard.statistics' %}
                                     <i class="bi bi-bar-chart me-2" style="margin-left: 10px;"></i>
-                                {% elif request.endpoint == 'dashboard.customer_analysis' %}
+                                {% elif request.endpoint == 'dashboard.customer_transactions' %}
+                                    <i class="bi bi-people-fill me-2" style="margin-left: 10px;"></i>
+                                {% elif request.endpoint == 'dashboard.customer_info' %}
                                     <i class="bi bi-people-fill me-2" style="margin-left: 10px;"></i>
                                 {% elif request.endpoint == 'dashboard.data_submission_time' %}
                                     <i class="bi bi-clock-history me-2" style="margin-left: 10px;"></i>
@@ -167,6 +237,8 @@
                                     <i class="bi bi-currency-yen me-2" style="margin-left: 10px;"></i>
                                 {% elif request.endpoint == 'dashboard.projects' %}
                                     <i class="bi bi-kanban me-2" style="margin-left: 10px;"></i>
+                                {% elif request.endpoint == 'dashboard.faq' %}
+                                    <i class="bi bi-question-circle me-2" style="margin-left: 10px;"></i>
                                 {% elif request.endpoint == 'dashboard.user_management' %}
                                     <i class="bi bi-people me-2" style="margin-left: 10px;"></i>
                                 {% else %}
@@ -287,6 +359,34 @@
                 document.body.removeChild(loadingToast);
             }, 3000);
         }
+        
+        function toggleSubmenu(element) {
+            event.preventDefault();
+            
+            const submenu = element.nextElementSibling;
+            const arrow = element.querySelector('.arrow');
+            
+            // 切换展开状态
+            element.classList.toggle('expanded');
+            submenu.classList.toggle('expanded');
+            
+            // 如果是收起状态，移除active类
+            if (!element.classList.contains('expanded')) {
+                element.classList.remove('active');
+            }
+        }
+        
+        // 页面加载时确保当前页面的菜单是展开的
+         document.addEventListener('DOMContentLoaded', function() {
+             const activeSubmenuItem = document.querySelector('.submenu-item.active');
+             if (activeSubmenuItem) {
+                 const submenu = activeSubmenuItem.closest('.submenu');
+                 const menuToggle = submenu.previousElementSibling;
+                 
+                 menuToggle.classList.add('expanded');
+                 submenu.classList.add('expanded');
+             }
+         });
     </script>
     
     {% block extra_js %}{% endblock %}

@@ -1,110 +1,99 @@
 {% extends 'dashboard_base.html' %}
-{% block page_title %}核发与成交{% endblock %}
+{% block page_title %}分月汇总{% endblock %}
 {% block content %}
 <div class="container-fluid py-4">
   <div class="card mb-3" style="position: relative; z-index: 10;">
     <div class="card-body">
       <form id="filterForm" class="row g-2 align-items-end">
-        <!-- 基本筛选条件 -->
-        <div class="col-auto mb-2">
+        <!-- 筛选条件 -->
+        <div class="col-sm-3 mb-2">
           <label class="form-label">二级单位</label>
-          <select class="form-select" name="secondary_unit" id="secondary_unit" style="width: 250px;">
+          <select class="form-select" name="secondary_unit" id="secondary_unit">
             <option value="--所有--">--所有--</option>
             {% for unit in secondary_units %}
             <option value="{{ unit }}">{{ unit }}</option>
             {% endfor %}
           </select>
         </div>
-        <div class="col-auto mb-2">
+        <div class="col-sm-3 mb-2">
+          <label class="form-label">所在省份</label>
+          <select class="form-select" name="province" id="province">
+            <option value="--所有--">--所有--</option>
+            {% for province in provinces %}
+            <option value="{{ province }}">{{ province }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-sm-3 mb-2">
+          <label class="form-label">所在区域</label>
+          <select class="form-select" name="region" id="region">
+            <option value="--所有--">--所有--</option>
+            {% for region in regions %}
+            <option value="{{ region }}">{{ region }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-sm-3 mb-2">
           <label class="form-label">电源品种</label>
-          <select class="form-select" name="power_type" id="power_type" style="width: 250px;">
+          <select class="form-select" name="power_type" id="power_type">
             <option value="--所有--">--所有--</option>
             {% for type in power_types %}
             <option value="{{ type }}">{{ type }}</option>
             {% endfor %}
           </select>
         </div>
-        <div class="col-auto mb-2">
+        <div class="col-sm-3 mb-2">
+          <label class="form-label">项目投资口径</label>
+          <select class="form-select" name="investment_scope" id="investment_scope">
+            <option value="--所有--">--所有--</option>
+            {% for scope in investment_scopes %}
+            <option value="{{ scope }}">{{ scope }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-sm-3 mb-2">
           <label class="form-label">项目性质</label>
-          <select class="form-select" name="project_nature" id="project_nature" style="width: 250px;">
+          <select class="form-select" name="project_nature" id="project_nature">
             <option value="--所有--">--所有--</option>
             {% for nature in project_natures %}
             <option value="{{ nature }}">{{ nature }}</option>
             {% endfor %}
           </select>
         </div>
-        
-        <!-- 高级筛选按钮 -->
-        <div class="col-auto mb-2">
-          <button type="button" class="btn btn-link" data-bs-toggle="collapse" data-bs-target="#advancedFilters">高级筛选</button>
+        <div class="col-sm-3 mb-2">
+          <label class="form-label">是否特高压配套电源</label>
+          <select class="form-select" name="is_uhv_support" id="is_uhv_support">
+            <option value="--所有--">--所有--</option>
+            <option value="1">是</option>
+            <option value="0">否</option>
+          </select>
+        </div>
+        <div class="col-sm-3 mb-2">
+          <label class="form-label">是否含补贴</label>
+          <select class="form-select" name="has_subsidy" id="has_subsidy">
+            <option value="--所有--">--所有--</option>
+            <option value="1">是</option>
+            <option value="0">否</option>
+          </select>
         </div>
         
-        <!-- 高级筛选区域 -->
-        <div class="collapse" id="advancedFilters">
-          <div class="row">
-            <div class="col-auto mb-2">
-              <label class="form-label">所在省份</label>
-              <select class="form-select" name="province" id="province" style="width: 250px;">
-                <option value="--所有--">--所有--</option>
-                {% for province in provinces %}
-                <option value="{{ province }}">{{ province }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-auto mb-2">
-              <label class="form-label">所在区域</label>
-              <select class="form-select" name="region" id="region" style="width: 250px;">
-                <option value="--所有--">--所有--</option>
-                {% for region in regions %}
-                <option value="{{ region }}">{{ region }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-auto mb-2">
-              <label class="form-label">项目投资口径</label>
-              <select class="form-select" name="investment_scope" id="investment_scope" style="width: 250px;">
-                <option value="--所有--">--所有--</option>
-                {% for scope in investment_scopes %}
-                <option value="{{ scope }}">{{ scope }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-auto mb-2">
-              <label class="form-label">是否特高压配套电源</label>
-              <select class="form-select" name="is_uhv_support" id="is_uhv_support" style="width: 250px;">
-                <option value="--所有--">--所有--</option>
-                <option value="1">是</option>
-                <option value="0">否</option>
-              </select>
-            </div>
-            <div class="col-auto mb-2">
-              <label class="form-label">是否含补贴</label>
-              <select class="form-select" name="has_subsidy" id="has_subsidy" style="width: 250px;">
-                <option value="--所有--">--所有--</option>
-                <option value="1">是</option>
-                <option value="0">否</option>
-              </select>
-            </div>
-            
-            <!-- 电量生产时间选择器 -->
-            <div class="col-sm-3 mb-2">
-              <label class="form-label">电量生产时间</label>
-              <div class="input-group">
-                <input type="month" class="form-control" id="production_start_month" name="production_start_month" placeholder="开始月份">
-                <span class="input-group-text">至</span>
-                <input type="month" class="form-control" id="production_end_month" name="production_end_month" placeholder="结束月份">
-              </div>
-            </div>
-            
-            <!-- 交易时间选择器 -->
-            <div class="col-sm-3 mb-2">
-              <label class="form-label">交易时间</label>
-              <div class="input-group">
-                <input type="date" class="form-control" id="transaction_start_date" name="transaction_start_date" placeholder="开始日期">
-                <span class="input-group-text">至</span>
-                <input type="date" class="form-control" id="transaction_end_date" name="transaction_end_date" placeholder="结束日期">
-              </div>
-            </div>
+        <!-- 电量生产时间选择器 -->
+        <div class="col-sm-3 mb-2">
+          <label class="form-label">电量生产时间</label>
+          <div class="input-group">
+            <input type="month" class="form-control" id="production_start_month" name="production_start_month" placeholder="开始月份">
+            <span class="input-group-text">至</span>
+            <input type="month" class="form-control" id="production_end_month" name="production_end_month" placeholder="结束月份">
+          </div>
+        </div>
+        
+        <!-- 交易时间选择器 -->
+        <div class="col-sm-3 mb-2">
+          <label class="form-label">交易时间</label>
+          <div class="input-group">
+            <input type="date" class="form-control" id="transaction_start_date" name="transaction_start_date" placeholder="开始日期">
+            <span class="input-group-text">至</span>
+            <input type="date" class="form-control" id="transaction_end_date" name="transaction_end_date" placeholder="结束日期">
           </div>
         </div>
         <div class="row align-items-end mb-2">
@@ -148,22 +137,7 @@
               <button type="reset" class="btn btn-outline-secondary ms-2">重置</button>
             </div>
             <!-- START: Checkboxes for column visibility -->
-            <div class="form-group ms-4 d-flex align-items-center">
-                <label class="form-label mb-0 me-2">显示列:</label>
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="toggleQty" value="qty" checked>
-                    <label class="form-check-label" for="toggleQty">数量</label>
-                </div>
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="toggleAmt" value="amt">
-                    <label class="form-check-label" for="toggleAmt">金额</label>
-                </div>
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="toggleAvg" value="avg" checked>
-                    <label class="form-check-label" for="toggleAvg">均价</label>
-                </div>
-            </div>
-            <!-- END: Checkboxes for column visibility -->
+
           </div>
         </div>
       </form>
@@ -172,7 +146,7 @@
 
 
 
-  <div class="card" style="height: calc(100vh - 320px); min-height: 400px; display: flex; flex-direction: column;">
+  <div class="card" style="height: calc(100vh - 450px); min-height: 400px; display: flex; flex-direction: column;">
     <div class="card-header">
       <ul class="nav nav-tabs card-header-tabs" id="analysisTab" role="tablist">
         <li class="nav-item" role="presentation">
@@ -205,34 +179,34 @@
                   <th rowspan="2" class="sticky-header">绿电绿证</th>
                   <th rowspan="2" class="sticky-header">核发平台售出量<br>（已划转量）</th>
                   <th rowspan="2" class="sticky-header">库存量</th>
-                  <th colspan="3" class="sticky-header col-parent-group">绿证平台售出-单向挂牌</th>
-                  <th colspan="3" class="sticky-header col-parent-group">绿证平台售出-双边线上</th>
-                  <th colspan="3" class="sticky-header col-parent-group">绿证平台售出-双边线下</th>
-                  <th colspan="3" class="sticky-header col-parent-group">北交平台售出</th>
-                  <th colspan="3" class="sticky-header col-parent-group">广交平台售出</th>
-                  <th colspan="3" class="sticky-header col-parent-group">交易平台售出汇总</th>
+                  <th colspan="3" class="sticky-header">绿证平台售出-单向挂牌</th>
+                  <th colspan="3" class="sticky-header">绿证平台售出-双边线上</th>
+                  <th colspan="3" class="sticky-header">绿证平台售出-双边线下</th>
+                  <th colspan="3" class="sticky-header">北交平台售出</th>
+                  <th colspan="3" class="sticky-header">广交平台售出</th>
+                  <th colspan="3" class="sticky-header">交易平台售出汇总</th>
                   <th rowspan="2" class="sticky-header">售出比例<br>（划转口径）</th>
                   <th rowspan="2" class="sticky-header">售出比例<br>（交易口径）</th>
                 </tr>
                 <tr>
-                  <th class="sticky-header-second col-qty">数量</th>
-                  <th class="sticky-header-second col-amt">金额</th>
-                  <th class="sticky-header-second col-avg">均价</th>
-                  <th class="sticky-header-second col-qty">数量</th>
-                  <th class="sticky-header-second col-amt">金额</th>
-                  <th class="sticky-header-second col-avg">均价</th>
-                  <th class="sticky-header-second col-qty">数量</th>
-                  <th class="sticky-header-second col-amt">金额</th>
-                  <th class="sticky-header-second col-avg">均价</th>
-                  <th class="sticky-header-second col-qty">数量</th>
-                  <th class="sticky-header-second col-amt">金额</th>
-                  <th class="sticky-header-second col-avg">均价</th>
-                  <th class="sticky-header-second col-qty">数量</th>
-                  <th class="sticky-header-second col-amt">金额</th>
-                  <th class="sticky-header-second col-avg">均价</th>
-                  <th class="sticky-header-second col-qty">数量</th>
-                  <th class="sticky-header-second col-amt">金额</th>
-                  <th class="sticky-header-second col-avg">均价</th>
+                  <th class="sticky-header-second">数量</th>
+                  <th class="sticky-header-second">金额</th>
+                  <th class="sticky-header-second">均价</th>
+                  <th class="sticky-header-second">数量</th>
+                  <th class="sticky-header-second">金额</th>
+                  <th class="sticky-header-second">均价</th>
+                  <th class="sticky-header-second">数量</th>
+                  <th class="sticky-header-second">金额</th>
+                  <th class="sticky-header-second">均价</th>
+                  <th class="sticky-header-second">数量</th>
+                  <th class="sticky-header-second">金额</th>
+                  <th class="sticky-header-second">均价</th>
+                  <th class="sticky-header-second">数量</th>
+                  <th class="sticky-header-second">金额</th>
+                  <th class="sticky-header-second">均价</th>
+                  <th class="sticky-header-second">数量</th>
+                  <th class="sticky-header-second">金额</th>
+                  <th class="sticky-header-second">均价</th>
                 </tr>
               </thead>
               <tbody id="resultBody">
@@ -252,32 +226,32 @@
               <thead class="bg-white">
                 <tr>
                   <th rowspan="2" class="sticky-header">成交年月</th>
-                  <th colspan="3" class="sticky-header col-parent-group">绿证平台售出-单向挂牌</th>
-                  <th colspan="3" class="sticky-header col-parent-group">绿证平台售出-双边线上</th>
-                  <th colspan="3" class="sticky-header col-parent-group">绿证平台售出-双边线下</th>
-                  <th colspan="3" class="sticky-header col-parent-group">北交平台售出</th>
-                  <th colspan="3" class="sticky-header col-parent-group">广交平台售出</th>
-                  <th colspan="3" class="sticky-header col-parent-group">交易平台售出汇总</th>
+                  <th colspan="3" class="sticky-header">绿证平台售出-单向挂牌</th>
+                  <th colspan="3" class="sticky-header">绿证平台售出-双边线上</th>
+                  <th colspan="3" class="sticky-header">绿证平台售出-双边线下</th>
+                  <th colspan="3" class="sticky-header">北交平台售出</th>
+                  <th colspan="3" class="sticky-header">广交平台售出</th>
+                  <th colspan="3" class="sticky-header">交易平台售出汇总</th>
                 </tr>
                 <tr>
-                  <th class="sticky-header-second col-qty">数量</th>
-                  <th class="sticky-header-second col-amt">金额</th>
-                  <th class="sticky-header-second col-avg">均价</th>
-                  <th class="sticky-header-second col-qty">数量</th>
-                  <th class="sticky-header-second col-amt">金额</th>
-                  <th class="sticky-header-second col-avg">均价</th>
-                  <th class="sticky-header-second col-qty">数量</th>
-                  <th class="sticky-header-second col-amt">金额</th>
-                  <th class="sticky-header-second col-avg">均价</th>
-                  <th class="sticky-header-second col-qty">数量</th>
-                  <th class="sticky-header-second col-amt">金额</th>
-                  <th class="sticky-header-second col-avg">均价</th>
-                  <th class="sticky-header-second col-qty">数量</th>
-                  <th class="sticky-header-second col-amt">金额</th>
-                  <th class="sticky-header-second col-avg">均价</th>
-                  <th class="sticky-header-second col-qty">数量</th>
-                  <th class="sticky-header-second col-amt">金额</th>
-                  <th class="sticky-header-second col-avg">均价</th>
+                  <th class="sticky-header-second">数量</th>
+                  <th class="sticky-header-second">金额</th>
+                  <th class="sticky-header-second">均价</th>
+                  <th class="sticky-header-second">数量</th>
+                  <th class="sticky-header-second">金额</th>
+                  <th class="sticky-header-second">均价</th>
+                  <th class="sticky-header-second">数量</th>
+                  <th class="sticky-header-second">金额</th>
+                  <th class="sticky-header-second">均价</th>
+                  <th class="sticky-header-second">数量</th>
+                  <th class="sticky-header-second">金额</th>
+                  <th class="sticky-header-second">均价</th>
+                  <th class="sticky-header-second">数量</th>
+                  <th class="sticky-header-second">金额</th>
+                  <th class="sticky-header-second">均价</th>
+                  <th class="sticky-header-second">数量</th>
+                  <th class="sticky-header-second">金额</th>
+                  <th class="sticky-header-second">均价</th>
                 </tr>
               </thead>
               <tbody id="transactionBody">
@@ -383,41 +357,10 @@ $(document).ready(function() {
     // 初始化项目选择器
     initProjectSelector();
 
-    // START: Column visibility toggle logic
-    function updateColumnVisibility() {
-        const showQty = $('#toggleQty').is(':checked');
-        const showAmt = $('#toggleAmt').is(':checked');
-        const showAvg = $('#toggleAvg').is(':checked');
 
-        // Toggle individual columns
-        $('.col-qty').toggle(showQty);
-        $('.col-amt').toggle(showAmt);
-        $('.col-avg').toggle(showAvg);
 
-        // Update colspan for parent headers and visibility
-        $('.col-parent-group').each(function() {
-            let colspan = 0;
-            if (showQty) colspan++;
-            if (showAmt) colspan++;
-            if (showAvg) colspan++;
-            
-            if (colspan > 0) {
-                $(this).show();
-                $(this).attr('colspan', colspan);
-            } else {
-                $(this).hide();
-            }
-        });
-    }
 
-    // Attach event listeners to checkboxes
-    $('#toggleQty, #toggleAmt, #toggleAvg').on('change', function() {
-        updateColumnVisibility();
-    });
 
-    // Initial call to set the correct state on page load
-    updateColumnVisibility();
-    // END: Column visibility toggle logic
 
     
     function initProjectSelector() {
@@ -518,24 +461,24 @@ $(document).ready(function() {
             const summaryRow = `
               <tr class="table-secondary fw-bold">
                 <td>汇总</td>
-                <td id="t_sum_unilateral_qty" class="col-qty">0</td>
-                <td id="t_sum_unilateral_amt" class="col-amt">0</td>
-                <td id="t_sum_unilateral_avg" class="col-avg">0</td>
-                <td id="t_sum_online_qty" class="col-qty">0</td>
-                <td id="t_sum_online_amt" class="col-amt">0</td>
-                <td id="t_sum_online_avg" class="col-avg">0</td>
-                <td id="t_sum_offline_qty" class="col-qty">0</td>
-                <td id="t_sum_offline_amt" class="col-amt">0</td>
-                <td id="t_sum_offline_avg" class="col-avg">0</td>
-                <td id="t_sum_beijing_qty" class="col-qty">0</td>
-                <td id="t_sum_beijing_amt" class="col-amt">0</td>
-                <td id="t_sum_beijing_avg" class="col-avg">0</td>
-                <td id="t_sum_guangzhou_qty" class="col-qty">0</td>
-                <td id="t_sum_guangzhou_amt" class="col-amt">0</td>
-                <td id="t_sum_guangzhou_avg" class="col-avg">0</td>
-                <td id="t_sum_total_qty" class="col-qty">0</td>
-                <td id="t_sum_total_amt" class="col-amt">0</td>
-                <td id="t_sum_total_avg" class="col-avg">0</td>
+                <td id="t_sum_unilateral_qty">0</td>
+                <td id="t_sum_unilateral_amt">0</td>
+                <td id="t_sum_unilateral_avg">0</td>
+                <td id="t_sum_online_qty">0</td>
+                <td id="t_sum_online_amt">0</td>
+                <td id="t_sum_online_avg">0</td>
+                <td id="t_sum_offline_qty">0</td>
+                <td id="t_sum_offline_amt">0</td>
+                <td id="t_sum_offline_avg">0</td>
+                <td id="t_sum_beijing_qty">0</td>
+                <td id="t_sum_beijing_amt">0</td>
+                <td id="t_sum_beijing_avg">0</td>
+                <td id="t_sum_guangzhou_qty">0</td>
+                <td id="t_sum_guangzhou_amt">0</td>
+                <td id="t_sum_guangzhou_avg">0</td>
+                <td id="t_sum_total_qty">0</td>
+                <td id="t_sum_total_amt">0</td>
+                <td id="t_sum_total_avg">0</td>
               </tr>
             `;
             $('#transactionBody').append(summaryRow);
@@ -560,24 +503,24 @@ $(document).ready(function() {
               const tr = `
                 <tr>
                   <td>${row.transaction_year_month || ''}</td>
-                  <td class="col-qty">${row.unilateral_qty || 0}</td>
-                  <td class="col-amt">${row.unilateral_amt || 0}</td>
-                  <td class="col-avg">${row.unilateral_avg || 0}</td>
-                  <td class="col-qty">${row.online_qty || 0}</td>
-                  <td class="col-amt">${row.online_amt || 0}</td>
-                  <td class="col-avg">${row.online_avg || 0}</td>
-                  <td class="col-qty">${row.offline_qty || 0}</td>
-                  <td class="col-amt">${row.offline_amt || 0}</td>
-                  <td class="col-avg">${row.offline_avg || 0}</td>
-                  <td class="col-qty">${row.beijing_qty || 0}</td>
-                  <td class="col-amt">${row.beijing_amt || 0}</td>
-                  <td class="col-avg">${row.beijing_avg || 0}</td>
-                  <td class="col-qty">${row.guangzhou_qty || 0}</td>
-                  <td class="col-amt">${row.guangzhou_amt || 0}</td>
-                  <td class="col-avg">${row.guangzhou_avg || 0}</td>
-                  <td class="col-qty">${Math.round(totalQty)}</td>
-                  <td class="col-amt">${totalAmt.toFixed(2)}</td>
-                  <td class="col-avg">${totalAvg}</td>
+                  <td>${row.unilateral_qty || 0}</td>
+                  <td>${row.unilateral_amt || 0}</td>
+                  <td>${row.unilateral_avg || 0}</td>
+                  <td>${row.online_qty || 0}</td>
+                  <td>${row.online_amt || 0}</td>
+                  <td>${row.online_avg || 0}</td>
+                  <td>${row.offline_qty || 0}</td>
+                  <td>${row.offline_amt || 0}</td>
+                  <td>${row.offline_avg || 0}</td>
+                  <td>${row.beijing_qty || 0}</td>
+                  <td>${row.beijing_amt || 0}</td>
+                  <td>${row.beijing_avg || 0}</td>
+                  <td>${row.guangzhou_qty || 0}</td>
+                  <td>${row.guangzhou_amt || 0}</td>
+                  <td>${row.guangzhou_avg || 0}</td>
+                  <td>${Math.round(totalQty)}</td>
+                  <td>${totalAmt.toFixed(2)}</td>
+                  <td>${totalAvg}</td>
                 </tr>
               `;
               $('#transactionBody').append(tr);
@@ -629,8 +572,7 @@ $(document).ready(function() {
           } else {
             $('#transactionBody').append('<tr><td colspan="19" class="text-center text-muted">暂无数据</td></tr>');
           }
-          
-          updateColumnVisibility();
+
           $('#loading').hide();
         },
         error: function(error) {
@@ -688,10 +630,6 @@ $(document).ready(function() {
       fetchAnalysisData();
       fetchTransactionTimeData();
     });
-
-    // 页面加载时自动应用筛选
-    fetchAnalysisData();
-    fetchTransactionTimeData();
 
     // 重置按钮点击事件
     $('button[type="reset"]').click(function() {
@@ -828,24 +766,24 @@ $(document).ready(function() {
                 <td id="sum_green_green">0</td>
                 <td id="sum_issued_platform_sold">0</td>
                 <td id="sum_inventory">0</td>
-                <td id="sum_unilateral_qty" class="col-qty">0</td>
-                <td id="sum_unilateral_amt" class="col-amt">0</td>
-                <td id="sum_unilateral_avg" class="col-avg">0</td>
-                <td id="sum_online_qty" class="col-qty">0</td>
-                <td id="sum_online_amt" class="col-amt">0</td>
-                <td id="sum_online_avg" class="col-avg">0</td>
-                <td id="sum_offline_qty" class="col-qty">0</td>
-                <td id="sum_offline_amt" class="col-amt">0</td>
-                <td id="sum_offline_avg" class="col-avg">0</td>
-                <td id="sum_beijing_qty" class="col-qty">0</td>
-                <td id="sum_beijing_amt" class="col-amt">0</td>
-                <td id="sum_beijing_avg" class="col-avg">0</td>
-                <td id="sum_guangzhou_qty" class="col-qty">0</td>
-                <td id="sum_guangzhou_amt" class="col-amt">0</td>
-                <td id="sum_guangzhou_avg" class="col-avg">0</td>
-                <td id="sum_total_qty" class="col-qty">0</td>
-                <td id="sum_total_amt" class="col-amt">0</td>
-                <td id="sum_total_avg" class="col-avg">0</td>
+                <td id="sum_unilateral_qty">0</td>
+                <td id="sum_unilateral_amt">0</td>
+                <td id="sum_unilateral_avg">0</td>
+                <td id="sum_online_qty">0</td>
+                <td id="sum_online_amt">0</td>
+                <td id="sum_online_avg">0</td>
+                <td id="sum_offline_qty">0</td>
+                <td id="sum_offline_amt">0</td>
+                <td id="sum_offline_avg">0</td>
+                <td id="sum_beijing_qty">0</td>
+                <td id="sum_beijing_amt">0</td>
+                <td id="sum_beijing_avg">0</td>
+                <td id="sum_guangzhou_qty">0</td>
+                <td id="sum_guangzhou_amt">0</td>
+                <td id="sum_guangzhou_avg">0</td>
+                <td id="sum_total_qty">0</td>
+                <td id="sum_total_amt">0</td>
+                <td id="sum_total_avg">0</td>
                 <td id="sum_issued_ratio">0.0%</td>
                 <td id="sum_trading_ratio">0.0%</td>
               </tr>
@@ -889,24 +827,24 @@ $(document).ready(function() {
                   <td>${row.green_green || 0}</td>
                   <td>${row.issued_platform_sold || 0}</td>
                   <td>${Math.round(inventory)}</td>
-                  <td class="col-qty">${row.unilateral_qty || 0}</td>
-                  <td class="col-amt">${row.unilateral_amt || 0}</td>
-                  <td class="col-avg">${row.unilateral_avg || 0}</td>
-                  <td class="col-qty">${row.online_qty || 0}</td>
-                  <td class="col-amt">${row.online_amt || 0}</td>
-                  <td class="col-avg">${row.online_avg || 0}</td>
-                  <td class="col-qty">${row.offline_qty || 0}</td>
-                  <td class="col-amt">${row.offline_amt || 0}</td>
-                  <td class="col-avg">${row.offline_avg || 0}</td>
-                  <td class="col-qty">${row.beijing_qty || 0}</td>
-                  <td class="col-amt">${row.beijing_amt || 0}</td>
-                  <td class="col-avg">${row.beijing_avg || 0}</td>
-                  <td class="col-qty">${row.guangzhou_qty || 0}</td>
-                  <td class="col-amt">${row.guangzhou_amt || 0}</td>
-                  <td class="col-avg">${row.guangzhou_avg || 0}</td>
-                  <td class="col-qty">${Math.round(totalQty)}</td>
-                  <td class="col-amt">${totalAmt.toFixed(2)}</td>
-                  <td class="col-avg">${totalAvg}</td>
+                  <td>${row.unilateral_qty || 0}</td>
+                  <td>${row.unilateral_amt || 0}</td>
+                  <td>${row.unilateral_avg || 0}</td>
+                  <td>${row.online_qty || 0}</td>
+                  <td>${row.online_amt || 0}</td>
+                  <td>${row.online_avg || 0}</td>
+                  <td>${row.offline_qty || 0}</td>
+                  <td>${row.offline_amt || 0}</td>
+                  <td>${row.offline_avg || 0}</td>
+                  <td>${row.beijing_qty || 0}</td>
+                  <td>${row.beijing_amt || 0}</td>
+                  <td>${row.beijing_avg || 0}</td>
+                  <td>${row.guangzhou_qty || 0}</td>
+                  <td>${row.guangzhou_amt || 0}</td>
+                  <td>${row.guangzhou_avg || 0}</td>
+                  <td>${Math.round(totalQty)}</td>
+                  <td>${totalAmt.toFixed(2)}</td>
+                  <td>${totalAvg}</td>
                   <td>${issuedRatio}</td>
                   <td>${tradingRatio}</td>
                 </tr>
@@ -981,7 +919,6 @@ $(document).ready(function() {
             $('#resultBody').append('<tr><td colspan="26" class="text-center text-muted">暂无数据</td></tr>');
           }
 
-          updateColumnVisibility();
           $('#loading').hide();
         },
         error: function(error) {
