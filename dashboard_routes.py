@@ -1928,7 +1928,7 @@ def get_transaction_time_data():
             # 广州交易中心数据
             guangzhou_sql_conditions = [
                 "project_id IN :project_ids",
-                "SUBSTRING(deal_time, 1, 7) = :month"
+                "SUBSTRING(deal_time, 1, 7) = :month" 
             ]
             guangzhou_sql_params = {'project_ids': tuple(project_ids_list), 'month': transaction_month}
             
