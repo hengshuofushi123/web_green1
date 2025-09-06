@@ -1,5 +1,5 @@
 {% extends 'dashboard_base.html' %}
-{% block page_title %}客户分析{% endblock %}
+{% block page_title %}客户成交情况{% endblock %}
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/element-plus.css') }}">
 <style>
@@ -44,6 +44,11 @@
   }
   .table-container::-webkit-scrollbar-thumb:hover {
     background: #555;
+  }
+  
+  /* 交易明细按钮最小宽度设置 */
+  .show-details-btn {
+    min-width: 75px;
   }
 </style>
 {% endblock %}

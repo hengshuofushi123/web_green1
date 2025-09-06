@@ -27,13 +27,9 @@
     <div class="col-12 col-md-2">
       <div class="card h-100">
         <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center">
-            <div>
-              <h6 class="text-muted mb-1">项目总数</h6>
-              <h3 class="mb-0">{{ total_projects or 0 }}</h3>
-            </div>
-            <span class="badge bg-primary">All</span>
-          </div>
+          <h6 class="text-muted mb-1">项目总数</h6>
+          <div class="mb-2"></div>
+          <h3 class="mb-0">{{ total_projects or 0 }}</h3>
         </div>
       </div>
     </div>
@@ -41,6 +37,7 @@
       <div class="card h-100">
         <div class="card-body">
           <h6 class="text-muted mb-1">累计核发量(万张)</h6>
+          <div class="mb-2"></div>
           <h3 class="mb-0">{{ (total_issued|default(0))|round(1) }}</h3>
         </div>
       </div>
@@ -49,23 +46,42 @@
       <div class="card h-100">
         <div class="card-body">
           <h6 class="text-muted mb-1">累计成交量(万张)</h6>
+          <div class="mb-2"></div>
           <h3 class="mb-0">{{ (total_sold|default(0))|round(1) }}</h3>
         </div>
       </div>
     </div>
-    <div class="col-12 col-md-3">
+    <div class="col-12 col-md-2">
       <div class="card h-100">
         <div class="card-body">
           <h6 class="text-muted mb-1">库存量（万张）</h6>
+          <div class="mb-2"></div>
           <h3 class="mb-0">{{ ((total_issued|default(0)) - (total_sold|default(0)))|round(1) }}</h3>
         </div>
       </div>
     </div>
-    <div class="col-12 col-md-3">
+    <div class="col-12 col-md-2">
       <div class="card h-100">
         <div class="card-body">
           <h6 class="text-muted mb-1">平均成交单价(元/张)</h6>
+          <div class="mb-2"></div>
           <h3 class="mb-0">{{ (avg_price|default(0))|round(1) }}</h3>
+        </div>
+      </div>
+    </div>
+    <!-- 广交绿证参考价格卡片 -->
+    <div class="col-12 col-md-2">
+      <div class="card h-100">
+        <div class="card-body">
+          <h6 class="text-muted mb-1">广交绿证价格（元/张）</h6>
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <h6 class="text-muted mb-0">当月</h6>
+            <h3 class="mb-0" id="currentMonthPrice">加载中...</h3>
+          </div>
+          <div class="d-flex justify-content-between align-items-center">
+            <h6 class="text-muted mb-0">年累</h6>
+            <h3 class="mb-0" id="annualCumulativePrice">加载中...</h3>
+          </div>
         </div>
       </div>
     </div>
@@ -77,7 +93,7 @@
     <div class="col-12 col-lg-6">
       <div class="card h-100">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <h5 class="mb-0">各省份成交量热力图</h5>
+          <h5 class="mb-0">各省份成交量</h5>
           <div class="btn-group" role="group" aria-label="省份类型切换">
             <input type="radio" class="btn-check" name="provinceType" id="buyerProvince" value="buyer" checked>
             <label class="btn btn-outline-primary btn-sm" for="buyerProvince">买方省份</label>
@@ -101,7 +117,7 @@
     <div class="col-12 col-lg-6">
       <div class="card h-100">
         <div class="card-header">
-          <h5 class="mb-0">月度成交趋势</h5>
+          <h5 class="mb-0"><span id="currentYearTrend">2025年量价趋势</span></h5>
         </div>
         <div class="card-body">
           <!-- 成交价图表 -->
@@ -127,9 +143,18 @@
   <div class="row g-3 mt-4">
     <div class="col-12 col-lg-3">
       <div class="card h-100">
-        <div class="card-header">省份成交Top5</div>
-        <div class="card-body" style="overflow-y: auto;">
-          <ul class="list-group list-group-flush">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>省份成交Top10</span>
+          <div class="btn-group" role="group" aria-label="省份类型切换">
+            <input type="radio" class="btn-check" name="provinceTopType" id="buyerProvinceTop" value="buyer">
+            <label class="btn btn-outline-primary btn-sm" for="buyerProvinceTop">买方省份</label>
+            
+            <input type="radio" class="btn-check" name="provinceTopType" id="sellerProvinceTop" value="seller" checked>
+            <label class="btn btn-outline-primary btn-sm" for="sellerProvinceTop">卖方省份</label>
+          </div>
+        </div>
+        <div class="card-body" style="overflow-y: auto; max-height: 400px;">
+          <ul class="list-group list-group-flush" id="provinceTopList">
             {% for item in top_provinces or [] %}
             <li class="list-group-item d-flex justify-content-between align-items-center py-1">
               <span class="small">{{ item.name }}</span>
@@ -144,8 +169,8 @@
     </div>
     <div class="col-12 col-lg-3">
       <div class="card h-100">
-        <div class="card-header">二级单位成交Top5</div>
-        <div class="card-body" style="overflow-y: auto;">
+        <div class="card-header">二级单位成交Top10</div>
+        <div class="card-body" style="overflow-y: auto; max-height: 400px;">
           <ul class="list-group list-group-flush">
             {% for item in top_secondary_units or [] %}
             <li class="list-group-item d-flex justify-content-between align-items-center py-1">
@@ -161,17 +186,17 @@
     </div>
     <div class="col-12 col-lg-3">
       <div class="card h-100">
-        <div class="card-header">买方成交Top5</div>
-        <div class="card-body" style="overflow-y: auto;">
+        <div class="card-header">买方成交Top10</div>
+        <div class="card-body" style="overflow-y: auto; max-height: 400px;">
           <ul class="list-group list-group-flush">
             {% for item in top_volume_trades or [] %}
             <li class="list-group-item py-1">
               <div class="d-flex justify-content-between align-items-start">
                 <div class="small">
-                  <div><strong>买方:</strong> {{ item.buyer }}</div>
+                  <div><strong>{{ item.buyer }}</strong></div>
                 </div>
                 <div class="text-end small">
-                  <div class="fw-bold">{{ item.quantity }}张</div>
+                  <div class="fw-bold">{{ (item.quantity / 10000)|round(1) }}万张</div>
                   <div class="text-muted">均价: {{ item.price }}元/张</div>
                 </div>
               </div>
@@ -185,8 +210,8 @@
     </div>
     <div class="col-12 col-lg-3">
       <div class="card h-100">
-        <div class="card-header">成交价Top5</div>
-        <div class="card-body" style="overflow-y: auto;">
+        <div class="card-header">成交价Top10</div>
+        <div class="card-body" style="overflow-y: auto; max-height: 400px;">
           <ul class="list-group list-group-flush">
             {% for item in top_price_trades or [] %}
             <li class="list-group-item py-1">
@@ -217,7 +242,7 @@
 {% block extra_js %}
 <!-- ECharts -->
 <script src="{{ url_for('static', filename='libs/echarts/echarts.min.js') }}"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/chart.js') }}"></script>
 <script>
 // 全局变量
 let chinaMapChart = null;
@@ -263,7 +288,7 @@ let selectedMonth = null;
       tooltip: {
         trigger: 'item',
         formatter: function(params) {
-          return `${params.name}<br/>成交量: ${params.value ? params.value.toLocaleString() : 0} 张`;
+          return `${params.name}<br/>成交量: ${params.value ? params.value.toLocaleString() : 0} 万张`;
         }
       },
       visualMap: {
@@ -276,8 +301,9 @@ let selectedMonth = null;
         calculable: true,
         inRange: {
           // color: ['#E0F3F8', '#ABD9E9', '#74ADD1', '#4575B4', '#313695']
-          // color: ['#EBF5FF', '#AED6F1', '#5DADE2', '#3498DB', '#21618C']
-          color: ['#AED6F1', '#5DADE2','#3498DB']
+          color: ['#b5dbe5', '#d3e387', '#f7ee7a']
+          // color: ['#f7ee7a', '#d3e387', '#b5dbe5']
+          //color: ['#AED6F1', '#5DADE2','#3498DB']
         },
         textStyle: {
           color: '#555'
@@ -408,7 +434,7 @@ let selectedMonth = null;
             intersect: false,
             callbacks: {
               label: function(context) {
-                return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + '张';
+                return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + '万张';
               }
             }
           }
@@ -432,7 +458,7 @@ let selectedMonth = null;
             beginAtZero: true,
             title: {
               display: true,
-              text: '成交量（张）',
+              text: '成交量（万张）',
               font: {
                 size: 10
               }
@@ -917,6 +943,93 @@ let selectedMonth = null;
       priceChart.update('none');
     }
   }
+  
+  // 设置当前年份标题
+  const currentYear = new Date().getFullYear();
+  const yearTrendElement = document.getElementById('currentYearTrend');
+  if (yearTrendElement) {
+    yearTrendElement.textContent = currentYear + '年量价趋势';
+  }
+  
+  // 获取广交绿证参考价格数据
+  function loadGreenCertPrice() {
+    fetch('/dashboard/api/green_cert_price')
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          const currentMonthElement = document.getElementById('currentMonthPrice');
+          const annualCumulativeElement = document.getElementById('annualCumulativePrice');
+          
+          // 格式化价格，保留1位小数
+          const currentPrice = parseFloat(data.data.currentMonthPrice).toFixed(1);
+          const annualPrice = parseFloat(data.data.annualCumulativePrice).toFixed(1);
+          
+          if (currentMonthElement) {
+            currentMonthElement.textContent = currentPrice;
+          }
+          if (annualCumulativeElement) {
+            annualCumulativeElement.textContent = annualPrice;
+          }
+        } else {
+          console.error('获取绿证价格失败:', data.message);
+          const currentMonthElement = document.getElementById('currentMonthPrice');
+          const annualCumulativeElement = document.getElementById('annualCumulativePrice');
+          
+          if (currentMonthElement) {
+            currentMonthElement.textContent = '暂无数据';
+          }
+          if (annualCumulativeElement) {
+            annualCumulativeElement.textContent = '暂无数据';
+          }
+        }
+      })
+      .catch(error => {
+        console.error('获取绿证价格数据失败:', error);
+        const currentMonthElement = document.getElementById('currentMonthPrice');
+        const annualCumulativeElement = document.getElementById('annualCumulativePrice');
+        
+        if (currentMonthElement) {
+          currentMonthElement.textContent = '网络错误';
+        }
+        if (annualCumulativeElement) {
+          annualCumulativeElement.textContent = '网络错误';
+        }
+      });
+  }
+  
+  // 加载绿证价格数据
+  loadGreenCertPrice();
+  
+  // 省份成交Top10切换功能
+  let currentProvinceTopType = 'seller';
+  const topProvincesData = {
+    seller: {{ top_provinces | tojson }},
+    buyer: {{ top_buyer_provinces | tojson }}
+  };
+  
+  function updateProvinceTopList(type) {
+    const listElement = document.getElementById('provinceTopList');
+    const data = topProvincesData[type] || [];
+    
+    if (data.length === 0) {
+      listElement.innerHTML = '<li class="list-group-item text-muted">暂无数据</li>';
+      return;
+    }
+    
+    listElement.innerHTML = data.map(item => 
+      `<li class="list-group-item d-flex justify-content-between align-items-center py-1">
+        <span class="small">${item.name}</span>
+        <span class="fw-bold small">${(item.value || 0).toFixed(1)}万张</span>
+      </li>`
+    ).join('');
+  }
+  
+  // 省份成交Top10类型切换事件监听
+  $('input[name="provinceTopType"]').change(function() {
+    const selectedType = $(this).val();
+    currentProvinceTopType = selectedType;
+    updateProvinceTopList(selectedType);
+  });
   
   // 获取真实数据并初始化图表
   fetch('/dashboard/api/dashboard_chart_data')

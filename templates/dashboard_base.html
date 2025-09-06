@@ -4,12 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}绿证项目数据仪表盘{% endblock %}</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.css') }}">
     {% block extra_css %}{% endblock %}
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='js/jquery-3.6.0.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/chart.js') }}"></script>
     <style>
         .sidebar {
             height: 100vh;
@@ -167,27 +167,31 @@
                     </h5>
                     <nav class="nav flex-column">
                         <a class="nav-link {% if request.endpoint == 'dashboard.overview' %}active{% endif %}" href="{{ url_for('dashboard.overview') }}">
-                            <i class="bi bi-speedometer2"></i>数据概览
+                            <i class="bi bi-speedometer2"></i>集团数据概览
                         </a>
                         <a class="nav-link {% if request.endpoint == 'dashboard.data_tables' %}active{% endif %}" href="{{ url_for('dashboard.data_tables') }}">
                             <i class="bi bi-table"></i>原始数据查看
                         </a>
-                        <a class="nav-link {% if request.endpoint == 'dashboard.transaction_analysis' %}active{% endif %}" href="{{ url_for('dashboard.transaction_analysis') }}">
-                            <i class="bi bi-calendar3"></i>核发与成交
-                        </a>
-                        <a class="nav-link {% if request.endpoint == 'dashboard.statistics' %}active{% endif %}" href="{{ url_for('dashboard.statistics') }}">
-                            <i class="bi bi-bar-chart"></i>聚合分析
-                        </a>
+                        <!-- 核发与成交展开菜单 -->
+                        <div class="menu-item">
+                            <a class="menu-toggle {% if request.endpoint in ['dashboard.transaction_analysis', 'dashboard.statistics'] %}expanded{% endif %}" href="#" onclick="toggleSubmenu(this)">
+                                <span><i class="bi bi-calendar3 menu-icon"></i>核发与成交</span>
+                                <i class="bi bi-chevron-right arrow"></i>
+                            </a>
+                            <div class="submenu {% if request.endpoint in ['dashboard.transaction_analysis', 'dashboard.statistics'] %}expanded{% endif %}">
+                                <a class="submenu-item {% if request.endpoint == 'dashboard.transaction_analysis' %}active{% endif %}" href="{{ url_for('dashboard.transaction_analysis') }}">逐月台账</a>
+                                <a class="submenu-item {% if request.endpoint == 'dashboard.statistics' %}active{% endif %}" href="{{ url_for('dashboard.statistics') }}">聚合分析</a>
+                            </div>
+                        </div>
                         <!-- 客户分析展开菜单 -->
                         <div class="menu-item">
-                            <a class="menu-toggle {% if request.endpoint in ['dashboard.customer_transactions', 'dashboard.customer_info', 'dashboard.customer_map'] %}expanded{% endif %}" href="#" onclick="toggleSubmenu(this)">
+                            <a class="menu-toggle {% if request.endpoint in ['dashboard.customer_transactions', 'dashboard.customer_info'] %}expanded{% endif %}" href="#" onclick="toggleSubmenu(this)">
                                 <span><i class="bi bi-people-fill menu-icon"></i>客户分析</span>
                                 <i class="bi bi-chevron-right arrow"></i>
                             </a>
-                            <div class="submenu {% if request.endpoint in ['dashboard.customer_transactions', 'dashboard.customer_info', 'dashboard.customer_map'] %}expanded{% endif %}">
+                            <div class="submenu {% if request.endpoint in ['dashboard.customer_transactions', 'dashboard.customer_info'] %}expanded{% endif %}">
                                 <a class="submenu-item {% if request.endpoint == 'dashboard.customer_transactions' %}active{% endif %}" href="{{ url_for('dashboard.customer_transactions') }}">客户成交情况</a>
                                 <a class="submenu-item {% if request.endpoint == 'dashboard.customer_info' %}active{% endif %}" href="{{ url_for('dashboard.customer_info') }}">客户信息</a>
-                                <a class="submenu-item {% if request.endpoint == 'dashboard.customer_map' %}active{% endif %}" href="{{ url_for('dashboard.customer_map') }}">成交地图</a>
                             </div>
                         </div>
                         <a class="nav-link {% if request.endpoint == 'dashboard.data_submission_time' %}active{% endif %}" href="{{ url_for('dashboard.data_submission_time') }}">
@@ -226,7 +230,7 @@
                                 {% elif request.endpoint == 'dashboard.transaction_analysis' %}
                                     <i class="bi bi-calendar3 me-2" style="margin-left: 10px;"></i>
                                 {% elif request.endpoint == 'dashboard.statistics' %}
-                                    <i class="bi bi-bar-chart me-2" style="margin-left: 10px;"></i>
+                                    <i class="bi bi-calendar3 me-2" style="margin-left: 10px;"></i>
                                 {% elif request.endpoint == 'dashboard.customer_transactions' %}
                                     <i class="bi bi-people-fill me-2" style="margin-left: 10px;"></i>
                                 {% elif request.endpoint == 'dashboard.customer_info' %}
@@ -244,7 +248,7 @@
                                 {% else %}
                                     <i class="bi bi-patch-check me-2" style="margin-left: 10px;"></i>
                                 {% endif %}
-                                {% block page_title %}数据概览{% endblock %}
+                                {% block page_title %}集团数据概览{% endblock %}
                             </h4>
                         </div>
                         <div class="d-flex align-items-center">

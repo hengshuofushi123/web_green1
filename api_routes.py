@@ -156,6 +156,7 @@ def get_module():
         # 使用 send_from_directory 可以安全地发送文件
         # Using send_from_directory is a secure way to send files
         return send_from_directory(directory=module_directory, path=module_filename, as_attachment=True, mimetype='text/plain')
+        
     except FileNotFoundError:
         print(f"错误: 在目录 {module_directory} 中未找到模块文件 {module_filename}")
         return jsonify({"success": False, "message": "服务器上未找到模块文件。"}), 404

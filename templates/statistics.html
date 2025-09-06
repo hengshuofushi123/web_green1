@@ -157,7 +157,7 @@
 <script src="{{ url_for('static', filename='js/vue.global.js') }}"></script>
 <script src="{{ url_for('static', filename='js/element-plus.js') }}"></script>
 <script src="{{ url_for('static', filename='js/element-plus-locale-zh-cn.js') }}"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/chart.js') }}"></script>
 <script>
   // 使用 Vue + Element Plus 管理日期范围，提供默认值：
   (function(){
@@ -246,7 +246,21 @@
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {legend: {position: 'bottom'}},
+        plugins: {
+          legend: {position: 'bottom'},
+          tooltip: {
+            mode: 'index',
+            intersect: false,
+            callbacks: {
+              title: function(context) {
+                return context[0].label;
+              },
+              label: function(context) {
+                return context.dataset.label + ': ' + context.parsed.y.toLocaleString();
+              }
+            }
+          }
+        },
         scales: {
           y: {
             type: 'linear',
@@ -305,7 +319,21 @@
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {legend: {position: 'bottom'}},
+        plugins: {
+          legend: {position: 'bottom'},
+          tooltip: {
+            mode: 'index',
+            intersect: false,
+            callbacks: {
+              title: function(context) {
+                return context[0].label;
+              },
+              label: function(context) {
+                return context.dataset.label + ': ' + context.parsed.y.toLocaleString();
+              }
+            }
+          }
+        },
         scales: {
           y: {
             type: 'linear',

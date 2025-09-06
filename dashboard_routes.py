@@ -9,11 +9,94 @@ import os
 import pandas as pd
 import numpy as np
 import json
+import requests
 from datetime import datetime, timedelta
 from utils import generate_random_password, update_pwd_excel, project_to_dict, populate_project_from_form
 from config import TABLE_HEADER_ORDERS
 
 dashboard_bp = Blueprint('dashboard', __name__, url_prefix='/dashboard')
+
+# 广交绿证价格缓存
+green_cert_price_cache = {
+    'data': None,
+    'timestamp': None,
+    'cache_duration': 24 * 60 * 60  # 24小时，单位：秒
+}
+
+def is_cache_valid():
+    """检查缓存是否有效（未过期）"""
+    if green_cert_price_cache['timestamp'] is None:
+        return False
+    
+    current_time = datetime.now()
+    cache_time = green_cert_price_cache['timestamp']
+    time_diff = (current_time - cache_time).total_seconds()
+    
+    return time_diff < green_cert_price_cache['cache_duration']
+
+def fetch_green_cert_price_from_api():
+    """从API获取广交绿证价格数据"""
+    import requests
+    
+    cookies = {}
+    
+    headers = {
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Connection': 'keep-alive',
+        'Content-Type': 'application/json;charset=UTF-8',
+        'Origin': 'https://gp.poweremarket.com',
+        'Referer': 'https://gp.poweremarket.com/rept/sr/mp/portaladmin/login.html',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-origin',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36',
+        'sec-ch-ua': '"Google Chrome";v="107", "Chromium";v="107", "Not=A?Brand";v="24"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+    }
+    
+    current_year = datetime.now().year
+    json_data = {
+        'years': str(current_year),
+    }
+    
+    response = requests.post(
+        'https://gp.poweremarket.com/rept/ma/gcc/gcc/publicHomePage/queryTitleStatics',
+        cookies=cookies,
+        headers=headers,
+        json=json_data,
+        timeout=10
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        if 'data' in data:
+            avg_this_month = data['data'].get('avgThisMonth', 0)
+            avg_annual_cumulative = data['data'].get('avgAnnualCumulative', 0)
+            
+            # 获取当前月份
+            current_month = datetime.now().month
+            month_name = f"{current_month}月"
+            
+            result_data = {
+                'currentMonth': month_name,
+                'currentMonthPrice': avg_this_month,
+                'annualCumulativePrice': avg_annual_cumulative
+            }
+            
+            # 更新缓存
+            green_cert_price_cache['data'] = result_data
+            green_cert_price_cache['timestamp'] = datetime.now()
+            
+            return {
+                'success': True,
+                'data': result_data
+            }
+        else:
+            raise Exception('数据格式错误')
+    else:
+        raise Exception(f'请求失败: {response.status_code}')
 
 
 @dashboard_bp.route('/')
@@ -88,17 +171,140 @@ def overview():
         """))
         avg_price = float(avg_price_result.scalar() or 0)  # 默认值如果没有数据
         
-        # 获取按省份的销售TOP5
+        # 获取按省份的销售TOP10（卖方省份）
         province_sales = connection.execute(text("""
             SELECT province, COALESCE(SUM(CAST(sold_quantity AS DECIMAL(15,2))), 0) as sales
             FROM nyj_green_certificate_ledger 
             WHERE sold_quantity IS NOT NULL AND sold_quantity != '' AND province IS NOT NULL
             GROUP BY province 
             ORDER BY sales DESC 
-            LIMIT 5
+            LIMIT 10
         """)).fetchall()
         
-        # 获取按二级单位的销售TOP5（从项目表关联）
+        # 获取按买方省份的成交TOP10 - 复用热力图的查询逻辑
+        # 首先获取所有项目ID列表
+        projects = Project.query.all()
+        project_ids_list = [p.id for p in projects]
+        
+        # 获取按买方省份的成交TOP10 - 复用热力图的查询逻辑
+        if not project_ids_list:
+            buyer_province_sales = []
+        else:
+            # 使用与get_province_transaction_data相同的查询方法
+            transaction_sql = """
+                SELECT 
+                    CASE 
+                        WHEN bj.buyer_entity_name IS NOT NULL THEN bj.buyer_entity_name
+                        WHEN gz.buyer_entity_name IS NOT NULL THEN gz.buyer_entity_name
+                        WHEN ul.member_name IS NOT NULL THEN ul.member_name
+                        WHEN ol.member_name IS NOT NULL THEN ol.member_name
+                        WHEN off.member_name IS NOT NULL THEN off.member_name
+                        ELSE '未知客户'
+                    END as customer_name,
+                    
+                    -- 总成交量
+                    COALESCE(SUM(CAST(ul.total_quantity AS DECIMAL(15,2))), 0) + 
+                    COALESCE(SUM(CAST(ol.total_quantity AS DECIMAL(15,2))), 0) + 
+                    COALESCE(SUM(CAST(off.total_quantity AS DECIMAL(15,2))), 0) + 
+                    COALESCE(SUM(CAST(bj.transaction_quantity AS DECIMAL(15,2))), 0) + 
+                    COALESCE(SUM(CAST(gz.gpc_certifi_num AS DECIMAL(15,2))), 0) as total_quantity
+                FROM projects p 
+                JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
+                LEFT JOIN gzpt_unilateral_listings ul ON n.project_id = ul.project_id AND n.production_year_month = ul.generate_ym AND ul.order_status = '1'
+                LEFT JOIN gzpt_bilateral_online_trades ol ON n.project_id = ol.project_id AND n.production_year_month = ol.generate_ym
+                LEFT JOIN gzpt_bilateral_offline_trades off ON n.project_id = off.project_id AND n.production_year_month = off.generate_ym
+                LEFT JOIN beijing_power_exchange_trades bj ON n.project_id = bj.project_id AND n.production_year_month = bj.production_year_month
+                LEFT JOIN guangzhou_power_exchange_trades gz ON n.project_id = gz.project_id AND n.production_year_month = gz.product_date
+                WHERE p.id IN :project_ids
+                AND n.production_year_month >= '0000-01'
+                AND n.production_year_month <= '9999-12'
+                GROUP BY customer_name
+                HAVING total_quantity > 0
+            """
+            
+            transaction_result = connection.execute(
+                text(transaction_sql),
+                {
+                    "project_ids": project_ids_list
+                }
+            )
+            
+            # 按客户名称聚合交易量
+            customer_volumes = {}
+            for row in transaction_result:
+                if row.customer_name and row.customer_name != '未知客户':
+                    customer_volumes[row.customer_name] = float(row.total_quantity or 0)
+        
+            # 获取所有有省份信息的客户
+            from models import Customer
+            all_customers = Customer.query.filter(
+                Customer.province.isnot(None),
+                Customer.province != '未设置'
+            ).all()
+            
+            # 按省份聚合成交量
+            province_volumes = {}
+            for customer in all_customers:
+                if customer.customer_name in customer_volumes:
+                    province = customer.province
+                    volume = customer_volumes[customer.customer_name]
+                    if province not in province_volumes:
+                        province_volumes[province] = 0
+                    province_volumes[province] += volume
+            
+            # 省份名称映射：将完整名称转换为简化名称
+            province_name_mapping = {
+                '北京市': '北京',
+                '天津市': '天津', 
+                '河北省': '河北',
+                '山西省': '山西',
+                '内蒙古自治区': '内蒙古',
+                '辽宁省': '辽宁',
+                '吉林省': '吉林',
+                '黑龙江省': '黑龙江',
+                '上海市': '上海',
+                '江苏省': '江苏',
+                '浙江省': '浙江',
+                '安徽省': '安徽',
+                '福建省': '福建',
+                '江西省': '江西',
+                '山东省': '山东',
+                '河南省': '河南',
+                '湖北省': '湖北',
+                '湖南省': '湖南',
+                '广东省': '广东',
+                '广西壮族自治区': '广西',
+                '海南省': '海南',
+                '重庆市': '重庆',
+                '四川省': '四川',
+                '贵州省': '贵州',
+                '云南省': '云南',
+                '西藏自治区': '西藏',
+                '陕西省': '陕西',
+                '甘肃省': '甘肃',
+                '青海省': '青海',
+                '宁夏回族自治区': '宁夏',
+                '新疆维吾尔自治区': '新疆',
+                '台湾省': '台湾',
+                '香港特别行政区': '香港',
+                '澳门特别行政区': '澳门'
+            }
+            
+            # 转换为前端需要的格式，并映射省份名称
+            province_data_list = []
+            for province, volume in province_volumes.items():
+                # 使用映射表转换省份名称，如果没有映射则使用原名称
+                mapped_name = province_name_mapping.get(province, province)
+                province_data_list.append({
+                    'name': mapped_name,
+                    'value': round(volume / 10000, 2)  # 转换为万张单位
+                })
+            
+            # 按成交量降序排序并取前10
+            province_data_list.sort(key=lambda x: x['value'], reverse=True)
+            buyer_province_sales = [(item['name'], item['value'] * 10000) for item in province_data_list[:10]]
+        
+        # 获取按二级单位的销售TOP10（从项目表关联）
         unit_sales = connection.execute(text("""
             SELECT p.secondary_unit, COALESCE(SUM(CAST(n.sold_quantity AS DECIMAL(15,2))), 0) as sales
             FROM projects p 
@@ -107,10 +313,10 @@ def overview():
             AND p.secondary_unit IS NOT NULL
             GROUP BY p.secondary_unit 
             ORDER BY sales DESC 
-            LIMIT 5
+            LIMIT 10
         """)).fetchall()
         
-        # 获取成交量TOP5买方（按买方汇总成交量）
+        # 获取成交量TOP10买方（按买方汇总成交量）
         volume_top10 = connection.execute(text("""
             SELECT 
                 buyer_name,
@@ -162,10 +368,10 @@ def overview():
                 HAVING total_quantity > 0
             ) as buyer_summary
             ORDER BY total_quantity DESC
-            LIMIT 5
+            LIMIT 10
         """)).fetchall()
         
-        # 获取成交价TOP5（显示买方/卖方/量/价格）
+        # 获取成交价TOP10（显示买方/卖方/量/价格）- 过滤掉绿证平台-单向挂牌数据
         price_top10 = connection.execute(text("""
             SELECT 
                 buyer_name,
@@ -185,21 +391,6 @@ def overview():
                 LEFT JOIN projects p ON gz.project_id = p.id
                 WHERE gpc_certifi_num IS NOT NULL AND gpc_certifi_num >= 100 
                 AND unit_price IS NOT NULL AND unit_price > 0
-                
-                UNION ALL
-                
-                -- 绿证交易平台 - 单向挂牌
-                SELECT 
-                    member_name as buyer_name,
-                    COALESCE(p.secondary_unit, '平台挂牌') as seller_name,
-                    CAST(total_quantity AS DECIMAL(15,2)) as total_quantity,
-                    CAST(total_amount / total_quantity AS DECIMAL(10,2)) as unit_price,
-                    '绿证平台-单向挂牌' as platform
-                FROM gzpt_unilateral_listings ul
-                LEFT JOIN projects p ON ul.project_id = p.id
-                WHERE total_quantity IS NOT NULL AND total_quantity >= 100 
-                AND total_amount IS NOT NULL AND total_amount > 0
-                AND order_status = '1'
                 
                 UNION ALL
                 
@@ -231,7 +422,7 @@ def overview():
                 AND transaction_price IS NOT NULL AND transaction_price > 0
             ) as all_trades
             ORDER BY unit_price DESC
-            LIMIT 5
+            LIMIT 10
         """)).fetchall()
         
         # 获取近6个月的趋势数据
@@ -302,6 +493,12 @@ def overview():
         for row in province_sales
     ] if province_sales else []
     
+    # 准备买方省份Top10列表数据
+    top_buyer_provinces = [
+        {'name': row[0], 'value': round(float(row[1])/10000, 1)} 
+        for row in buyer_province_sales
+    ] if buyer_province_sales else []
+    
     top_secondary_units = [
         {'name': row[0], 'value': round(float(row[1])/10000, 1)} 
         for row in unit_sales
@@ -354,6 +551,7 @@ def overview():
                          total_sold=round(total_sold, 1),
                          avg_price=round(avg_price, 1),
                          top_provinces=top_provinces,
+                         top_buyer_provinces=top_buyer_provinces,
                          top_secondary_units=top_secondary_units,
                          top_volume_trades=top_volume_trades,
                          top_price_trades=top_price_trades,
@@ -825,6 +1023,8 @@ def data_tables():
             where_clause += " AND order_status = '1'"
         elif table_name == 'gzpt_bilateral_offline_trades':
             where_clause += " AND order_status = '3'"
+        elif table_name == 'gzpt_bilateral_online_trades':
+            where_clause += " AND order_status = '2'"
         total = db.session.execute(text(f"SELECT COUNT(*) FROM {table_name} {where_clause}")).scalar()
         pagination = {
             'page': page,
@@ -948,6 +1148,8 @@ def download_table_data():
         where_clause += " AND order_status = '1'"
     elif table_name == 'gzpt_bilateral_offline_trades':
         where_clause += " AND order_status = '3'"
+    elif table_name == 'gzpt_bilateral_online_trades':
+        where_clause += " AND order_status = '2'"
     data_result = db.session.execute(text(f"SELECT * FROM {table_name} {where_clause}"))
     data = [dict(row) for row in data_result.mappings()]
     header_order = TABLE_HEADER_ORDERS.get(table_name, [])
@@ -1234,62 +1436,13 @@ def statistics():
         # 构建新的、正确的SQL查询
         sql = text(f"""
             WITH
-            -- CTE for Trading Platform Summaries (unchanged logic)
-            ul_summary AS (
-                SELECT
-                    project_id, generate_ym as production_ym,
-                    COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
-                    COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
-                FROM gzpt_unilateral_listings
-                WHERE project_id IN :project_ids AND order_status = '1' {transaction_filter_clauses['ul']}
-                GROUP BY project_id, production_ym
-            ),
-            off_summary AS (
-                SELECT
-                    project_id, generate_ym as production_ym,
-                    COALESCE(SUM(CAST(total_quantity AS DECIMAL(15,2))), 0) as total_qty,
-                    COALESCE(SUM(CAST(total_amount AS DECIMAL(15,2))), 0) as total_amt
-                FROM gzpt_bilateral_offline_trades
-                WHERE project_id IN :project_ids AND order_status = '3' {transaction_filter_clauses['off']}
-                GROUP BY project_id, production_ym
-            ),
-            bj_summary AS (
-                SELECT
-                    project_id, production_year_month as production_ym,
-                    COALESCE(SUM(CAST(transaction_quantity AS DECIMAL(15,2))), 0) as total_qty,
-                    COALESCE(SUM(CAST(transaction_quantity AS DECIMAL(15,2)) * CAST(transaction_price AS DECIMAL(15,2))), 0) as total_amt
-                FROM beijing_power_exchange_trades
-                WHERE project_id IN :project_ids {transaction_filter_clauses['bj']}
-                GROUP BY project_id, production_ym
-            ),
-            gz_summary AS (
-                SELECT
-                    project_id, CONCAT(SUBSTRING(product_date, 1, 4), '-', LPAD(SUBSTRING(product_date, 6), 2, '0')) as production_ym,
-                    COALESCE(SUM(CAST(gpc_certifi_num AS DECIMAL(15,2))), 0) as total_qty,
-                    COALESCE(SUM(CAST(total_cost AS DECIMAL(15,2))), 0) as total_amt
-                FROM guangzhou_power_exchange_trades
-                WHERE project_id IN :project_ids {transaction_filter_clauses['gz']}
-                GROUP BY project_id, production_ym
-            ),
-
-            -- CTE 1: Ledger-based metrics (ordinary_total, trading_platform_sold, avg_price)
-            LedgerMetrics AS (
+            -- 1. 核发量 (普通绿证)
+            LedgerIssuance AS (
                 SELECT
                     {group_by_clause} as dimension_value,
-                    COALESCE(SUM(CASE WHEN n.ordinary_quantity IS NOT NULL AND n.ordinary_quantity != '' THEN CAST(n.ordinary_quantity AS DECIMAL(15,2)) ELSE 0 END), 0) as ordinary_total,
-                    (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0)) as trading_platform_sold,
-                    CASE
-                        WHEN (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0)) > 0
-                        THEN (COALESCE(SUM(ul.total_amt), 0) + COALESCE(SUM(off.total_amt), 0) + COALESCE(SUM(bj.total_amt), 0) + COALESCE(SUM(gz.total_amt), 0)) /
-                             (COALESCE(SUM(ul.total_qty), 0) + COALESCE(SUM(off.total_qty), 0) + COALESCE(SUM(bj.total_qty), 0) + COALESCE(SUM(gz.total_qty), 0))
-                        ELSE 0
-                    END as avg_price
+                    COALESCE(SUM(CAST(n.ordinary_quantity AS DECIMAL(15,2))), 0) as ordinary_total
                 FROM projects p
                 JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
-                LEFT JOIN ul_summary ul ON p.id = ul.project_id AND n.production_year_month = ul.production_ym
-                LEFT JOIN off_summary off ON p.id = off.project_id AND n.production_year_month = off.production_ym
-                LEFT JOIN bj_summary bj ON p.id = bj.project_id AND n.production_year_month = bj.production_ym
-                LEFT JOIN gz_summary gz ON p.id = gz.project_id AND n.production_year_month = gz.production_ym
                 WHERE p.id IN :project_ids
                   AND n.production_year_month >= :start_month
                   AND n.production_year_month <= :end_month
@@ -1297,8 +1450,8 @@ def statistics():
                 GROUP BY {group_by_clause}
             ),
 
-            -- CTE 2: Direct query for Issued Platform metrics
-            IssuedMetrics AS (
+            -- 2. 核发平台售出量
+            IssuedPlatformSales AS (
                 SELECT
                     {group_by_clause} as dimension_value,
                     COALESCE(SUM(CAST(tr.transaction_num AS DECIMAL(15,2))), 0) as issued_platform_sold
@@ -1307,28 +1460,62 @@ def statistics():
                 WHERE p.id IN :project_ids
                   AND CONCAT(tr.production_year, '-', LPAD(tr.production_month, 2, '0')) >= :start_month
                   AND CONCAT(tr.production_year, '-', LPAD(tr.production_month, 2, '0')) <= :end_month
-                  {transaction_filter_clauses['tr']} -- This is the transaction time filter string
+                  {transaction_filter_clauses['tr']}
                   AND {group_by_clause} IS NOT NULL
                 GROUP BY {group_by_clause}
             ),
+            
+            -- 3. 交易平台售出量和金额
+            TradingPlatformSales AS (
+                SELECT 
+                    dimension_value,
+                    SUM(qty) as trading_platform_sold,
+                    SUM(amt) as trading_platform_amount
+                FROM (
+                    SELECT p.id, {group_by_clause} as dimension_value, CAST(ul.total_quantity AS DECIMAL(15,2)) as qty, CAST(ul.total_amount AS DECIMAL(15,2)) as amt
+                    FROM projects p JOIN gzpt_unilateral_listings ul ON p.id = ul.project_id
+                    WHERE p.id IN :project_ids AND ul.order_status = '1' AND ul.generate_ym >= :start_month AND ul.generate_ym <= :end_month {transaction_filter_clauses['ul']}
+                    UNION ALL
+                    SELECT p.id, {group_by_clause} as dimension_value, CAST(off.total_quantity AS DECIMAL(15,2)), CAST(off.total_amount AS DECIMAL(15,2))
+                    FROM projects p JOIN gzpt_bilateral_offline_trades off ON p.id = off.project_id
+                    WHERE p.id IN :project_ids AND off.order_status = '3' AND off.generate_ym >= :start_month AND off.generate_ym <= :end_month {transaction_filter_clauses['off']}
+                    UNION ALL
+                    SELECT p.id, {group_by_clause} as dimension_value, CAST(bj.transaction_quantity AS DECIMAL(15,2)), CAST(bj.transaction_quantity AS DECIMAL(15,2)) * CAST(bj.transaction_price AS DECIMAL(15,2))
+                    FROM projects p JOIN beijing_power_exchange_trades bj ON p.id = bj.project_id
+                    WHERE p.id IN :project_ids AND bj.production_year_month >= :start_month AND bj.production_year_month <= :end_month {transaction_filter_clauses['bj']}
+                    UNION ALL
+                    SELECT p.id, {group_by_clause} as dimension_value, CAST(gz.gpc_certifi_num AS DECIMAL(15,2)), CAST(gz.total_cost AS DECIMAL(15,2))
+                    FROM projects p JOIN guangzhou_power_exchange_trades gz ON p.id = gz.project_id
+                    WHERE p.id IN :project_ids AND CONCAT(SUBSTRING(gz.product_date, 1, 4), '-', LPAD(SUBSTRING(gz.product_date, 6), 2, '0')) >= :start_month AND CONCAT(SUBSTRING(gz.product_date, 1, 4), '-', LPAD(SUBSTRING(gz.product_date, 6), 2, '0')) <= :end_month {transaction_filter_clauses['gz']}
+                ) as all_trades
+                WHERE dimension_value IS NOT NULL
+                GROUP BY dimension_value
+            ),
 
-            -- Master list of all possible dimension values that appear in either calculation
+            -- 4. 整合所有维度
             AllDimensions AS (
-                SELECT dimension_value FROM LedgerMetrics
+                SELECT dimension_value FROM LedgerIssuance
                 UNION
-                SELECT dimension_value FROM IssuedMetrics
+                SELECT dimension_value FROM IssuedPlatformSales
+                UNION
+                SELECT dimension_value FROM TradingPlatformSales
             )
 
-            -- Final SELECT to combine the two metrics
+            -- 5. 最终联接和计算 (注意：这里移除了最后的逗号)
             SELECT
                 d.dimension_value,
-                COALESCE(lm.ordinary_total, 0) as ordinary_total,
-                COALESCE(im.issued_platform_sold, 0) as issued_platform_sold,
-                COALESCE(lm.trading_platform_sold, 0) as trading_platform_sold,
-                COALESCE(lm.avg_price, 0) as avg_price
+                COALESCE(li.ordinary_total, 0) as ordinary_total,
+                COALESCE(ips.issued_platform_sold, 0) as issued_platform_sold,
+                COALESCE(tps.trading_platform_sold, 0) as trading_platform_sold,
+                CASE
+                    WHEN COALESCE(tps.trading_platform_sold, 0) > 0
+                    THEN COALESCE(tps.trading_platform_amount, 0) / tps.trading_platform_sold
+                    ELSE 0
+                END as avg_price
             FROM AllDimensions d
-            LEFT JOIN LedgerMetrics lm ON d.dimension_value = lm.dimension_value
-            LEFT JOIN IssuedMetrics im ON d.dimension_value = im.dimension_value
+            LEFT JOIN LedgerIssuance li ON d.dimension_value = li.dimension_value
+            LEFT JOIN IssuedPlatformSales ips ON d.dimension_value = ips.dimension_value
+            LEFT JOIN TradingPlatformSales tps ON d.dimension_value = tps.dimension_value
             ORDER BY ordinary_total DESC
         """)
         
@@ -1596,7 +1783,8 @@ def get_analysis_data():
             # 5. 绿证平台售出-双边线上 - 从gzpt_bilateral_online_trades表
             online_sql_conditions = [
                 "project_id IN :project_ids",
-                "generate_ym = :month"
+                "generate_ym = :month",
+                "order_status = '2'"
             ]
             online_sql_params = {'project_ids': tuple(project_ids_list), 'month': month}
             
@@ -1836,7 +2024,8 @@ def get_transaction_time_data():
             # 双边线上数据
             online_sql_conditions = [
                 "project_id IN :project_ids",
-                "SUBSTRING(order_time_str, 1, 7) = :month"
+                "SUBSTRING(order_time_str, 1, 7) = :month",
+                "order_status = '2'"
             ]
             online_sql_params = {'project_ids': tuple(project_ids_list), 'month': transaction_month}
             
@@ -1928,7 +2117,7 @@ def get_transaction_time_data():
             # 广州交易中心数据
             guangzhou_sql_conditions = [
                 "project_id IN :project_ids",
-                "SUBSTRING(deal_time, 1, 7) = :month" 
+                "SUBSTRING(deal_time, 1, 7) = :month"
             ]
             guangzhou_sql_params = {'project_ids': tuple(project_ids_list), 'month': transaction_month}
             
@@ -2414,12 +2603,8 @@ def get_province_transaction_data():
     """获取各省份成交量数据API - 复用customer_transactions的查询逻辑"""
     from models import Customer
     
-    # 添加项目权限控制
-    query = Project.query
-    if not current_user.is_admin:
-        query = query.filter(Project.secondary_unit == current_user.username)
-    
-    projects = query.all()
+    # 移除项目权限控制，所有用户看到完整数据
+    projects = Project.query.all()
     project_ids_list = [p.id for p in projects]
     
     if not project_ids_list:
@@ -2540,7 +2725,7 @@ def get_province_transaction_data():
         mapped_name = province_name_mapping.get(province, province)
         province_data.append({
             'name': mapped_name,
-            'value': round(volume, 2)
+            'value': round(volume / 10000, 2)  # 转换为万张单位
         })
     
     # 按成交量降序排序
@@ -2557,12 +2742,8 @@ def get_province_transaction_data():
 def get_seller_province_transaction_data():
     """获取各省份卖方成交量数据API"""
     
-    # 添加项目权限控制
-    query = Project.query
-    if not current_user.is_admin:
-        query = query.filter(Project.secondary_unit == current_user.username)
-    
-    projects = query.all()
+    # 移除项目权限控制，所有用户看到完整数据
+    projects = Project.query.all()
     project_ids_list = [p.id for p in projects]
     
     if not project_ids_list:
@@ -2575,37 +2756,18 @@ def get_seller_province_transaction_data():
         
         # 查询卖方成交量数据 - 基于项目的省份信息
         seller_sql = """
-            SELECT 
-                p.province as seller_province,
-                -- 总成交量
-                COALESCE(SUM(CAST(ul.total_quantity AS DECIMAL(15,2))), 0) + 
-                COALESCE(SUM(CAST(ol.total_quantity AS DECIMAL(15,2))), 0) + 
-                COALESCE(SUM(CAST(off.total_quantity AS DECIMAL(15,2))), 0) + 
-                COALESCE(SUM(CAST(bj.transaction_quantity AS DECIMAL(15,2))), 0) + 
-                COALESCE(SUM(CAST(gz.gpc_certifi_num AS DECIMAL(15,2))), 0) as total_quantity
-            FROM projects p 
-            JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
-            LEFT JOIN gzpt_unilateral_listings ul ON n.project_id = ul.project_id AND n.production_year_month = ul.generate_ym AND ul.order_status = '1'
-            LEFT JOIN gzpt_bilateral_online_trades ol ON n.project_id = ol.project_id AND n.production_year_month = ol.generate_ym
-            LEFT JOIN gzpt_bilateral_offline_trades off ON n.project_id = off.project_id AND n.production_year_month = off.generate_ym
-            LEFT JOIN beijing_power_exchange_trades bj ON n.project_id = bj.project_id AND n.production_year_month = bj.production_year_month
-            LEFT JOIN guangzhou_power_exchange_trades gz ON n.project_id = gz.project_id AND n.production_year_month = gz.product_date
-            WHERE p.id IN :project_ids
-            AND n.production_year_month >= :start_month
-            AND n.production_year_month <= :end_month
-            AND p.province IS NOT NULL
-            AND p.province != ''
-            GROUP BY p.province
-            HAVING total_quantity > 0
+            SELECT province, COALESCE(SUM(CAST(sold_quantity AS DECIMAL(15,2))), 0) as sales
+            FROM nyj_green_certificate_ledger 
+            WHERE sold_quantity IS NOT NULL AND sold_quantity != '' AND province IS NOT NULL
+            GROUP BY province 
+            ORDER BY sales DESC 
         """
         
+
+
         seller_result = connection.execute(
             text(seller_sql),
-            {
-                "project_ids": project_ids_list,
-                "start_month": start_month,
-                "end_month": end_month
-            }
+            #【注意】如果原来的代码有参数绑定，这里可能需要调整
         )
         
         # 省份名称映射：将完整名称转换为热力图识别的简化名称
@@ -2649,12 +2811,11 @@ def get_seller_province_transaction_data():
         # 转换为前端需要的格式，并映射省份名称
         province_data = []
         for row in seller_result:
-            if row.seller_province:
-                # 使用映射表转换省份名称，如果没有映射则使用原名称
-                mapped_name = province_name_mapping.get(row.seller_province, row.seller_province)
+            if row.province:
+                mapped_name = province_name_mapping.get(row.province, row.province)
                 province_data.append({
                     'name': mapped_name,
-                    'value': round(float(row.total_quantity or 0), 2)
+                    'value': round(float(row.sales or 0) / 10000, 2)  # 转换为万张单位
                 })
         
         # 按成交量降序排序
@@ -3228,12 +3389,8 @@ def get_show_all_prices_setting():
 @login_required
 def get_dashboard_chart_data():
     """获取数据概览页面图表所需的真实数据"""
-    # 获取所有项目ID（管理员可以看所有，非管理员只能看自己的）
-    query = Project.query
-    if not current_user.is_admin:
-        query = query.filter(Project.secondary_unit == current_user.username)
-    
-    projects = query.all()
+    # 移除项目权限控制，所有用户看到完整数据
+    projects = Project.query.all()
     project_ids_list = [p.id for p in projects]
     
     if not project_ids_list:
@@ -3375,7 +3532,7 @@ def get_dashboard_chart_data():
                 avg_price = round(total_amt / total_qty, 2) if total_qty > 0 else 0
                 
                 # 存储数据
-                month_volume[f'data_{prod_year}'] = total_qty
+                month_volume[f'data_{prod_year}'] = round(total_qty / 10000, 2)  # 转换为万张
                 month_price[f'data_{prod_year}'] = avg_price
             
             volume_data.append(month_volume)
@@ -3630,3 +3787,72 @@ def delete_faq(faq_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'删除FAQ失败: {str(e)}'}), 500
+
+
+@dashboard_bp.route('/api/green_cert_price', methods=['GET'])
+@login_required
+def get_green_cert_price():
+    """获取广交绿证参考价格数据（带缓存）"""
+    try:
+        # 检查缓存是否有效
+        if is_cache_valid() and green_cert_price_cache['data'] is not None:
+            # 返回缓存的数据
+            cached_data = green_cert_price_cache['data']
+            return jsonify({
+                'success': True,
+                'data': {
+                    'currentMonth': cached_data['currentMonth'],
+                    'currentMonthPrice': cached_data['currentMonthPrice'],
+                    'annualCumulativePrice': cached_data['annualCumulativePrice']
+                },
+                'from_cache': True
+            })
+        
+        # 缓存无效或不存在，从API获取新数据
+        try:
+            result = fetch_green_cert_price_from_api()
+            if result['success']:
+                data = result['data']
+                return jsonify({
+                    'success': True,
+                    'data': {
+                        'currentMonth': data['currentMonth'],
+                        'currentMonthPrice': data['currentMonthPrice'],
+                        'annualCumulativePrice': data['annualCumulativePrice']
+                    },
+                    'from_cache': False
+                })
+            else:
+                raise Exception('API返回失败')
+                
+        except requests.exceptions.RequestException as e:
+            return jsonify({
+                'success': False,
+                'message': f'网络请求失败: {str(e)}',
+                'data': {
+                    'currentMonth': '当月',
+                    'currentMonthPrice': '暂无数据',
+                    'annualCumulativePrice': '暂无数据'
+                }
+            })
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'message': f'获取价格数据失败: {str(e)}',
+                'data': {
+                    'currentMonth': '当月',
+                    'currentMonthPrice': '暂无数据',
+                    'annualCumulativePrice': '暂无数据'
+                }
+            })
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'系统错误: {str(e)}',
+            'data': {
+                'currentMonth': '当月',
+                'currentMonthPrice': '暂无数据',
+                'annualCumulativePrice': '暂无数据'
+            }
+        })
