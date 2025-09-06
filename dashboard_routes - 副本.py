@@ -1973,7 +1973,10 @@ def customer_transactions():
                              customer_data=customer_data)
     
     with db.engine.connect() as connection:
-        # 生产期筛选策略
+        # 生产期筛选策略：
+        # - 初次进入（URL无对应参数）使用默认：当年1月至当前月
+        # - 如果用户提交但清空（参数存在但为空字符串），视为不限制生产期（全量），绑定极值范围
+        # - 两端都有值时，按用户选择范围
         has_prod_params = ('start_date' in request.args) or ('end_date' in request.args)
         if has_prod_params:
             if start_date and end_date:
@@ -1985,102 +1988,82 @@ def customer_transactions():
         else:
             start_month = default_start
             end_month = default_end
+        
+        # 构建基础SQL查询，按客户名称分组
+        base_sql = """
+            SELECT 
+                CASE 
+                    WHEN bj.buyer_entity_name IS NOT NULL THEN bj.buyer_entity_name
+                    WHEN gz.buyer_entity_name IS NOT NULL THEN gz.buyer_entity_name
+                    WHEN ul.member_name IS NOT NULL THEN ul.member_name
+                    WHEN ol.member_name IS NOT NULL THEN ol.member_name
+                    WHEN off.member_name IS NOT NULL THEN off.member_name
+                    ELSE '未知客户'
+                END as customer_name,
 
-        # 构建交易时间筛选的SQL片段
-        # 注意：为每个表单独构建筛选条件
-        transaction_filters = {
-            'ul': '', 'ol': '', 'off': '', 'bj': '', 'gz': ''
-        }
-        if transaction_start_date and transaction_end_date:
-            # 为确保覆盖全天，将 end_date 调整为 'YYYY-MM-DD 23:59:59'
-            end_date_for_query = f"{transaction_end_date} 23:59:59"
-            transaction_filters['ul'] = f"AND ul.order_time_str BETWEEN '{transaction_start_date}' AND '{end_date_for_query}'"
-            transaction_filters['ol'] = f"AND ol.order_time_str BETWEEN '{transaction_start_date}' AND '{end_date_for_query}'"
-            transaction_filters['off'] = f"AND off.order_time_str BETWEEN '{transaction_start_date}' AND '{end_date_for_query}'"
-            transaction_filters['bj'] = f"AND bj.transaction_time BETWEEN '{transaction_start_date}' AND '{end_date_for_query}'"
-            transaction_filters['gz'] = f"AND gz.deal_time BETWEEN '{transaction_start_date}' AND '{end_date_for_query}'"
-
-        # 构建新的、正确的SQL查询
-        # 核心思想：将每个交易平台的筛选逻辑都独立处理，然后汇总
-        complete_sql = f"""
-            SELECT
-                customer_name,
-                SUM(total_quantity) as total_quantity,
-                CASE
-                    WHEN SUM(total_quantity) > 0 THEN SUM(total_amount) / SUM(total_quantity)
-                    ELSE 0
+                -- 总成交量
+                COALESCE(SUM(CAST(ul.total_quantity AS DECIMAL(15,2))), 0) + 
+                COALESCE(SUM(CAST(ol.total_quantity AS DECIMAL(15,2))), 0) + 
+                COALESCE(SUM(CAST(off.total_quantity AS DECIMAL(15,2))), 0) + 
+                COALESCE(SUM(CAST(bj.transaction_quantity AS DECIMAL(15,2))), 0) + 
+                COALESCE(SUM(CAST(gz.gpc_certifi_num AS DECIMAL(15,2))), 0) as total_quantity,
+                -- 成交均价
+                CASE 
+                    WHEN (COALESCE(SUM(CAST(ul.total_quantity AS DECIMAL(15,2))), 0) + 
+                          COALESCE(SUM(CAST(ol.total_quantity AS DECIMAL(15,2))), 0) + 
+                          COALESCE(SUM(CAST(off.total_quantity AS DECIMAL(15,2))), 0) + 
+                          COALESCE(SUM(CAST(bj.transaction_quantity AS DECIMAL(15,2))), 0) + 
+                          COALESCE(SUM(CAST(gz.gpc_certifi_num AS DECIMAL(15,2))), 0)) > 0
+                    THEN (COALESCE(SUM(CAST(ul.total_amount AS DECIMAL(15,2))), 0) + 
+                          COALESCE(SUM(CAST(ol.total_amount AS DECIMAL(15,2))), 0) + 
+                          COALESCE(SUM(CAST(off.total_amount AS DECIMAL(15,2))), 0) + 
+                          COALESCE(SUM(CAST(bj.transaction_quantity AS DECIMAL(15,2)) * CAST(bj.transaction_price AS DECIMAL(15,2))), 0) + 
+                          COALESCE(SUM(CAST(gz.total_cost AS DECIMAL(15,2))), 0)) / 
+                         (COALESCE(SUM(CAST(ul.total_quantity AS DECIMAL(15,2))), 0) + 
+                          COALESCE(SUM(CAST(ol.total_quantity AS DECIMAL(15,2))), 0) + 
+                          COALESCE(SUM(CAST(off.total_quantity AS DECIMAL(15,2))), 0) + 
+                          COALESCE(SUM(CAST(bj.transaction_quantity AS DECIMAL(15,2))), 0) + 
+                          COALESCE(SUM(CAST(gz.gpc_certifi_num AS DECIMAL(15,2))), 0))
+                    ELSE 0 
                 END as avg_price
-            FROM (
-                -- 绿证交易平台 - 单向挂牌
-                SELECT
-                    ul.member_name as customer_name,
-                    CAST(ul.total_quantity AS DECIMAL(15,2)) as total_quantity,
-                    CAST(ul.total_amount AS DECIMAL(15,2)) as total_amount
-                FROM projects p
-                JOIN gzpt_unilateral_listings ul ON p.id = ul.project_id
-                WHERE p.id IN :project_ids AND ul.order_status = '1'
-                AND ul.generate_ym >= :start_month AND ul.generate_ym <= :end_month
-                {transaction_filters['ul']}
-
-                UNION ALL
-
-                -- 绿证交易平台 - 双边线上 (如有)
-                SELECT
-                    ol.member_name as customer_name,
-                    CAST(ol.total_quantity AS DECIMAL(15,2)) as total_quantity,
-                    CAST(ol.total_amount AS DECIMAL(15,2)) as total_amount
-                FROM projects p
-                JOIN gzpt_bilateral_online_trades ol ON p.id = ol.project_id
-                WHERE p.id IN :project_ids
-                AND ol.generate_ym >= :start_month AND ol.generate_ym <= :end_month
-                {transaction_filters['ol']}
-
-                UNION ALL
-
-                -- 绿证交易平台 - 双边线下
-                SELECT
-                    off.member_name as customer_name,
-                    CAST(off.total_quantity AS DECIMAL(15,2)) as total_quantity,
-                    CAST(off.total_amount AS DECIMAL(15,2)) as total_amount
-                FROM projects p
-                JOIN gzpt_bilateral_offline_trades off ON p.id = off.project_id
-                WHERE p.id IN :project_ids AND off.order_status = '3'
-                AND off.generate_ym >= :start_month AND off.generate_ym <= :end_month
-                {transaction_filters['off']}
-
-                UNION ALL
-
-                -- 北京电力交易中心
-                SELECT
-                    bj.buyer_entity_name as customer_name,
-                    CAST(bj.transaction_quantity AS DECIMAL(15,2)) as total_quantity,
-                    CAST(bj.transaction_quantity AS DECIMAL(15,2)) * CAST(bj.transaction_price AS DECIMAL(15,2)) as total_amount
-                FROM projects p
-                JOIN beijing_power_exchange_trades bj ON p.id = bj.project_id
-                WHERE p.id IN :project_ids
-                AND bj.production_year_month >= :start_month AND bj.production_year_month <= :end_month
-                {transaction_filters['bj']}
-
-                UNION ALL
-
-                -- 广州电力交易中心
-                SELECT
-                    gz.buyer_entity_name as customer_name,
-                    CAST(gz.gpc_certifi_num AS DECIMAL(15,2)) as total_quantity,
-                    CAST(gz.total_cost AS DECIMAL(15,2)) as total_amount
-                FROM projects p
-                JOIN guangzhou_power_exchange_trades gz ON p.id = gz.project_id
-                WHERE p.id IN :project_ids
-                AND gz.product_date >= :start_month AND gz.product_date <= :end_month
-                {transaction_filters['gz']}
-
-            ) as all_trades
-            WHERE customer_name IS NOT NULL AND customer_name != '未知客户'
+            FROM projects p 
+            JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
+            LEFT JOIN gzpt_unilateral_listings ul ON n.project_id = ul.project_id AND n.production_year_month = ul.generate_ym AND ul.order_status = '1'
+            LEFT JOIN gzpt_bilateral_online_trades ol ON n.project_id = ol.project_id AND n.production_year_month = ol.generate_ym
+            LEFT JOIN gzpt_bilateral_offline_trades off ON n.project_id = off.project_id AND n.production_year_month = off.generate_ym
+            LEFT JOIN beijing_power_exchange_trades bj ON n.project_id = bj.project_id AND n.production_year_month = bj.production_year_month
+            LEFT JOIN guangzhou_power_exchange_trades gz ON n.project_id = gz.project_id AND n.production_year_month = gz.product_date
+            WHERE p.id IN :project_ids
+            AND n.production_year_month >= :start_month
+            AND n.production_year_month <= :end_month
+        """
+        
+        # 添加交易时间筛选条件
+        transaction_filter = ""
+        if transaction_start_date and transaction_end_date:
+            transaction_filter = f"""
+                AND ((
+                    bj.transaction_time >= '{transaction_start_date}' AND bj.transaction_time <= '{transaction_end_date}'
+                ) OR (
+                    gz.deal_time >= '{transaction_start_date}' AND gz.deal_time <= '{transaction_end_date}'
+                ) OR (
+                    ul.order_time_str >= '{transaction_start_date}' AND ul.order_time_str <= '{transaction_end_date}'
+                ) OR (
+                    ol.order_time_str >= '{transaction_start_date}' AND ol.order_time_str <= '{transaction_end_date}'
+                ) OR (
+                    off.order_time_str >= '{transaction_start_date}' AND off.order_time_str <= '{transaction_end_date}'
+                ))
+            """
+        
+        # 移除客户类型筛选条件
+        
+        # 组合完整SQL
+        complete_sql = base_sql + transaction_filter + """
             GROUP BY customer_name
             HAVING total_quantity > 0
             ORDER BY total_quantity DESC
         """
-
+        
         # 执行查询
         result = connection.execute(
             text(complete_sql),

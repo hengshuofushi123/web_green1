@@ -11,6 +11,7 @@ from web_routes import web
 from api_routes import api
 from utils import generate_random_password, update_pwd_excel
 from dashboard_routes import dashboard_bp
+from scheduler import start_dashboard_scheduler, stop_dashboard_scheduler
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
@@ -59,5 +60,16 @@ app.register_blueprint(web)
 app.register_blueprint(api)
 app.register_blueprint(dashboard_bp)
 
+# 应用关闭时停止定时任务调度器
+import atexit
+atexit.register(stop_dashboard_scheduler)
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0',port=8000)
+    try:
+        # 启动定时任务调度器
+        start_dashboard_scheduler()
+        print("Dashboard定时任务调度器已启动")
+        
+        app.run(debug=True, host='0.0.0.0', port=8000)
+    finally:
+        stop_dashboard_scheduler()
