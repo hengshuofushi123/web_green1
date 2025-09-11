@@ -2525,33 +2525,40 @@ def get_customer_details():
     customer_name = request.args.get('customer_name', '')
     if not customer_name:
         return jsonify({'error': '缺少客户名称参数'}), 400
-    
+
     # 获取时间范围参数
     current_date = datetime.now()
     default_start = f"{current_date.year}-01"
     default_end = f"{current_date.year}-{str(current_date.month).zfill(2)}"
-    
+
     start_date = request.args.get('start_date', default_start)
     end_date = request.args.get('end_date', default_end)
     transaction_start_date = request.args.get('transaction_start_date', '')
     transaction_end_date = request.args.get('transaction_end_date', current_date.strftime('%Y-%m-%d'))
-    
-    # 处理时间范围
+
+    # 处理生产月份范围
     has_prod_params = ('start_date' in request.args) or ('end_date' in request.args)
     if has_prod_params:
-        if start_date and end_date:
-            start_month = start_date[:7]
-            end_month = end_date[:7]
-        else:
-            start_month = '0000-01'
-            end_month = '9999-12'
+        start_month = start_date[:7] if start_date else '0000-01'
+        end_month = end_date[:7] if end_date else '9999-12'
     else:
         start_month = default_start
         end_month = default_end
-    
+
+    # 构建交易时间筛选的SQL片段
+    transaction_filters = {
+        'ul': '', 'ol': '', 'off': '', 'bj': '', 'gz': ''
+    }
+    if transaction_start_date and transaction_end_date:
+        end_date_for_query = f"{transaction_end_date} 23:59:59"
+        transaction_filters['ul'] = f"AND ul.order_time_str BETWEEN '{transaction_start_date}' AND '{end_date_for_query}'"
+        transaction_filters['ol'] = f"AND ol.order_time_str BETWEEN '{transaction_start_date}' AND '{end_date_for_query}'"
+        transaction_filters['off'] = f"AND off.order_time_str BETWEEN '{transaction_start_date}' AND '{end_date_for_query}'"
+        transaction_filters['bj'] = f"AND bj.transaction_time BETWEEN '{transaction_start_date}' AND '{end_date_for_query}'"
+        transaction_filters['gz'] = f"AND gz.deal_time BETWEEN '{transaction_start_date}' AND '{end_date_for_query}'"
+
     # 添加项目权限控制
     query = Project.query
-    # 非管理员只能查看自己的数据
     if not current_user.is_admin:
         query = query.filter(Project.secondary_unit == current_user.username)
     
@@ -2560,87 +2567,91 @@ def get_customer_details():
     
     if not project_ids_list:
         return jsonify({'details': []})
+
+    # 使用 UNION ALL 构建准确的查询
+    details_sql = f"""
+        SELECT * FROM (
+            -- 1. 绿证交易平台 - 单向挂牌
+            SELECT
+                p.secondary_unit,
+                p.project_name,
+                ul.order_time_str AS transaction_time,
+                ul.generate_ym AS production_time,
+                CAST(ul.total_quantity AS DECIMAL(15,2)) AS quantity,
+                CASE WHEN ul.total_quantity > 0 THEN CAST(ul.total_amount AS DECIMAL(15,2)) / CAST(ul.total_quantity AS DECIMAL(15,2)) ELSE 0 END AS price
+            FROM projects p JOIN gzpt_unilateral_listings ul ON p.id = ul.project_id
+            WHERE p.id IN :project_ids AND ul.member_name = :customer_name AND ul.order_status = '1'
+            AND ul.generate_ym BETWEEN :start_month AND :end_month
+            {transaction_filters['ul']}
+
+            UNION ALL
+
+            -- 2. 绿证交易平台 - 双边线上
+            SELECT
+                p.secondary_unit,
+                p.project_name,
+                ol.order_time_str AS transaction_time,
+                ol.generate_ym AS production_time,
+                CAST(ol.total_quantity AS DECIMAL(15,2)) AS quantity,
+                CASE WHEN ol.total_quantity > 0 THEN CAST(ol.total_amount AS DECIMAL(15,2)) / CAST(ol.total_quantity AS DECIMAL(15,2)) ELSE 0 END AS price
+            FROM projects p JOIN gzpt_bilateral_online_trades ol ON p.id = ol.project_id
+            WHERE p.id IN :project_ids AND ol.member_name = :customer_name
+            AND ol.generate_ym BETWEEN :start_month AND :end_month
+            {transaction_filters['ol']}
+
+            UNION ALL
+
+            -- 3. 绿证交易平台 - 双边线下
+            SELECT
+                p.secondary_unit,
+                p.project_name,
+                off.order_time_str AS transaction_time,
+                off.generate_ym AS production_time,
+                CAST(off.total_quantity AS DECIMAL(15,2)) AS quantity,
+                CASE WHEN off.total_quantity > 0 THEN CAST(off.total_amount AS DECIMAL(15,2)) / CAST(off.total_quantity AS DECIMAL(15,2)) ELSE 0 END AS price
+            FROM projects p JOIN gzpt_bilateral_offline_trades off ON p.id = off.project_id
+            WHERE p.id IN :project_ids AND off.member_name = :customer_name AND off.order_status = '3'
+            AND off.generate_ym BETWEEN :start_month AND :end_month
+            {transaction_filters['off']}
+
+            UNION ALL
+
+            -- 4. 北京电力交易中心
+            SELECT
+                p.secondary_unit,
+                p.project_name,
+                bj.transaction_time AS transaction_time,
+                bj.production_year_month AS production_time,
+                CAST(bj.transaction_quantity AS DECIMAL(15,2)) AS quantity,
+                CAST(bj.transaction_price AS DECIMAL(15,2)) AS price
+            FROM projects p JOIN beijing_power_exchange_trades bj ON p.id = bj.project_id
+            WHERE p.id IN :project_ids AND bj.buyer_entity_name = :customer_name
+            AND bj.production_year_month BETWEEN :start_month AND :end_month
+            {transaction_filters['bj']}
+
+            UNION ALL
+
+            -- 5. 广州电力交易中心
+            SELECT
+                p.secondary_unit,
+                p.project_name,
+                gz.deal_time AS transaction_time,
+                CONCAT(SUBSTRING(gz.product_date, 1, 4), '-', LPAD(SUBSTRING(gz.product_date, 6), 2, '0')) AS production_time,
+                CAST(gz.gpc_certifi_num AS DECIMAL(15,2)) AS quantity,
+                CASE WHEN gz.gpc_certifi_num > 0 THEN CAST(gz.total_cost AS DECIMAL(15,2)) / CAST(gz.gpc_certifi_num AS DECIMAL(15,2)) ELSE 0 END AS price
+            FROM projects p JOIN guangzhou_power_exchange_trades gz ON p.id = gz.project_id
+            WHERE p.id IN :project_ids AND gz.buyer_entity_name = :customer_name
+            AND CONCAT(SUBSTRING(gz.product_date, 1, 4), '-', LPAD(SUBSTRING(gz.product_date, 6), 2, '0')) BETWEEN :start_month AND :end_month
+            {transaction_filters['gz']}
+        ) as all_details
+        WHERE quantity > 0
+        ORDER BY transaction_time DESC, quantity DESC
+    """
     
     details = []
-    
     with db.engine.connect() as connection:
-        # 构建SQL查询，获取交易明细
-        details_sql = """
-            SELECT 
-                p.secondary_unit,
-                CASE 
-                    WHEN bj.transaction_time IS NOT NULL THEN bj.transaction_time
-                    WHEN gz.deal_time IS NOT NULL THEN gz.deal_time
-                    WHEN ul.order_time_str IS NOT NULL THEN ul.order_time_str
-                    WHEN ol.order_time_str IS NOT NULL THEN ol.order_time_str
-                    WHEN off.order_time_str IS NOT NULL THEN off.order_time_str
-                    ELSE NULL
-                END as transaction_time,
-                n.production_year_month as production_time,
-                CASE
-                    WHEN ul.total_quantity IS NOT NULL THEN CAST(ul.total_quantity AS DECIMAL(15,2))
-                    WHEN ol.total_quantity IS NOT NULL THEN CAST(ol.total_quantity AS DECIMAL(15,2))
-                    WHEN off.total_quantity IS NOT NULL THEN CAST(off.total_quantity AS DECIMAL(15,2))
-                    WHEN bj.transaction_quantity IS NOT NULL THEN CAST(bj.transaction_quantity AS DECIMAL(15,2))
-                    WHEN gz.gpc_certifi_num IS NOT NULL THEN CAST(gz.gpc_certifi_num AS DECIMAL(15,2))
-                    ELSE 0
-                END as quantity,
-                CASE
-                    WHEN ul.total_quantity > 0 THEN CAST(ul.total_amount AS DECIMAL(15,2)) / CAST(ul.total_quantity AS DECIMAL(15,2))
-                    WHEN ol.total_quantity > 0 THEN CAST(ol.total_amount AS DECIMAL(15,2)) / CAST(ol.total_quantity AS DECIMAL(15,2))
-                    WHEN off.total_quantity > 0 THEN CAST(off.total_amount AS DECIMAL(15,2)) / CAST(off.total_quantity AS DECIMAL(15,2))
-                    WHEN bj.transaction_quantity > 0 THEN CAST(bj.transaction_price AS DECIMAL(15,2))
-                    WHEN gz.gpc_certifi_num > 0 THEN CAST(gz.total_cost AS DECIMAL(15,2)) / CAST(gz.gpc_certifi_num AS DECIMAL(15,2))
-                    ELSE 0
-                END as price,
-                CASE
-                    WHEN bj.record_project_name IS NOT NULL THEN bj.record_project_name
-                    WHEN gz.record_project_name IS NOT NULL THEN gz.record_project_name
-                    WHEN ul.project_name IS NOT NULL THEN ul.project_name
-                    WHEN ol.project_name IS NOT NULL THEN ol.project_name
-                    WHEN off.project_name IS NOT NULL THEN off.project_name
-                    ELSE p.project_name
-                END as project_name
-            FROM projects p 
-            JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
-            LEFT JOIN gzpt_unilateral_listings ul ON n.project_id = ul.project_id AND n.production_year_month = ul.generate_ym AND ul.order_status = '1'
-            LEFT JOIN gzpt_bilateral_online_trades ol ON n.project_id = ol.project_id AND n.production_year_month = ol.generate_ym
-            LEFT JOIN gzpt_bilateral_offline_trades off ON n.project_id = off.project_id AND n.production_year_month = off.generate_ym
-            LEFT JOIN beijing_power_exchange_trades bj ON n.project_id = bj.project_id AND n.production_year_month = bj.production_year_month
-            LEFT JOIN guangzhou_power_exchange_trades gz ON n.project_id = gz.project_id AND n.production_year_month = gz.product_date
-            WHERE p.id IN :project_ids
-            AND n.production_year_month >= :start_month
-            AND n.production_year_month <= :end_month
-            AND (
-                (bj.buyer_entity_name = :customer_name) OR
-                (gz.buyer_entity_name = :customer_name) OR
-                (ul.member_name = :customer_name) OR
-                (ol.member_name = :customer_name) OR
-                (off.member_name = :customer_name)
-            )
-        """
-        
-        # 添加交易时间筛选条件
-        transaction_filter = ""
-        if transaction_start_date and transaction_end_date:
-            transaction_filter = f"""
-                AND (
-                    (bj.transaction_time IS NULL OR (bj.transaction_time >= '{transaction_start_date}' AND bj.transaction_time <= '{transaction_end_date}')) OR
-                    (gz.deal_time IS NULL OR (gz.deal_time >= '{transaction_start_date}' AND gz.deal_time <= '{transaction_end_date}')) OR
-                    (ul.order_time_str IS NULL OR (ul.order_time_str >= '{transaction_start_date}' AND ul.order_time_str <= '{transaction_end_date}')) OR
-                    (ol.order_time_str IS NULL OR (ol.order_time_str >= '{transaction_start_date}' AND ol.order_time_str <= '{transaction_end_date}')) OR
-                    (off.order_time_str IS NULL OR (off.order_time_str >= '{transaction_start_date}' AND off.order_time_str <= '{transaction_end_date}'))
-                )
-            """
-        
-        # 组合完整SQL
-        complete_details_sql = details_sql + transaction_filter + """
-            ORDER BY quantity DESC
-        """
-        
-        # 执行查询
         result = connection.execute(
-            text(complete_details_sql),
+            text(details_sql),
             {
                 "project_ids": project_ids_list, 
                 "start_month": start_month, 
@@ -2649,18 +2660,16 @@ def get_customer_details():
             }
         )
         
-        # 处理查询结果
         for row in result:
-            if row.quantity > 0:  # 只返回有效交易
-                details.append({
-                    'secondary_unit': row.secondary_unit,
-                    'transaction_time': row.transaction_time,
-                    'production_time': row.production_time,
-                    'quantity': f"{float(row.quantity):.2f}",
-                    'price': f"{float(row.price):.2f}",
-                    'project_name': row.project_name
-                })
-    
+            details.append({
+                'secondary_unit': row.secondary_unit,
+                'transaction_time': row.transaction_time,
+                'production_time': row.production_time,
+                'quantity': f"{float(row.quantity):.2f}",
+                'price': f"{float(row.price):.2f}",
+                'project_name': row.project_name
+            })
+            
     return jsonify({'details': details})
 
 
