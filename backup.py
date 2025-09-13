@@ -22,7 +22,7 @@ def create_backup():
     backup_dir = f"D:\\code\\backup\\{timestamp}"
     
     # 需要排除的目录和文件
-    exclude_dirs = {'venv', '.idea', '__pycache__'}
+    exclude_dirs = {'venv', '.idea', '__pycache__', '其它文件','received_data'}
     exclude_files = {'backup.py'}
     
     try:
