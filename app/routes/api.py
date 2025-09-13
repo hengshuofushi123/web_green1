@@ -3,13 +3,13 @@
 
 from flask import Blueprint, jsonify, request, current_app, send_from_directory
 from flask_login import current_user
-from models import db, User, Project
+from ..models import db, User, Project
 import json
 import os
 import logging
 from datetime import datetime
 from config import API_ACCESS_TOKEN
-from data_processors import update_derived_tables
+from ..data_processors import update_derived_tables
 
 # 创建日志记录器
 logger = logging.getLogger(__name__)

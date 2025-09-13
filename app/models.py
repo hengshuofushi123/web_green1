@@ -1,9 +1,9 @@
-from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from passlib.hash import sha256_crypt
 from datetime import datetime
 
-db = SQLAlchemy()
+# 从 app/__init__.py 中导入 db 实例
+from . import db
 
 class User(UserMixin, db.Model):
     __tablename__ = 'users'

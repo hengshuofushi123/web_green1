@@ -1,0 +1,131 @@
+Status: 200
+Response text: <!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">项目管理系统</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    
+                </ul>
+                
+            </div>
+        </div>
+    </nav>
+    <div class="container mt-4">
+        
+            
+                
+                    <div class="alert alert-message alert-dismissible fade show" role="alert">
+                        Please log in to access this page.
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                
+            
+        
+        
+<div class="container">
+    <h2>用户登录</h2>
+    <form method="post">
+        <div class="mb-3">
+            <label for="username" class="form-label">账号</label>
+            <select class="form-select" id="username" name="username" required>
+                <option value="">选择账号</option>
+                
+                <option value="admin">管理员</option>
+                
+                <option value="上海电力">上海电力</option>
+                
+                <option value="上海能科">上海能科</option>
+                
+                <option value="东北公司">东北公司</option>
+                
+                <option value="中国电力">中国电力</option>
+                
+                <option value="云南国际">云南国际</option>
+                
+                <option value="五凌电力">五凌电力</option>
+                
+                <option value="内蒙古公司">内蒙古公司</option>
+                
+                <option value="北京公司">北京公司</option>
+                
+                <option value="吉电股份">吉电股份</option>
+                
+                <option value="四川公司">四川公司</option>
+                
+                <option value="国能生物">国能生物</option>
+                
+                <option value="安徽公司">安徽公司</option>
+                
+                <option value="山东能源">山东能源</option>
+                
+                <option value="山西公司">山西公司</option>
+                
+                <option value="工程公司（山东院）">工程公司（山东院）</option>
+                
+                <option value="广东公司">广东公司</option>
+                
+                <option value="广西公司">广西公司</option>
+                
+                <option value="新疆能源化工">新疆能源化工</option>
+                
+                <option value="江苏公司">江苏公司</option>
+                
+                <option value="江西公司">江西公司</option>
+                
+                <option value="江西核电">江西核电</option>
+                
+                <option value="河北公司">河北公司</option>
+                
+                <option value="河南公司">河南公司</option>
+                
+                <option value="浙江公司">浙江公司</option>
+                
+                <option value="海南公司">海南公司</option>
+                
+                <option value="湖北公司">湖北公司</option>
+                
+                <option value="甘肃公司">甘肃公司</option>
+                
+                <option value="福建公司">福建公司</option>
+                
+                <option value="西藏公司">西藏公司</option>
+                
+                <option value="贵州金元">贵州金元</option>
+                
+                <option value="重庆公司">重庆公司</option>
+                
+                <option value="铝电公司">铝电公司</option>
+                
+                <option value="陕西公司">陕西公司</option>
+                
+                <option value="黄河公司">黄河公司</option>
+                
+                <option value="黑龙江公司">黑龙江公司</option>
+                
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="password" class="form-label">密码</label>
+            <input type="password" class="form-control" id="password" name="password" required>
+        </div>
+        <button type="submit" class="btn btn-primary">登录</button>
+    </form>
+</div>
+
+    </div>
+</body>
+</html>
+Error: Expecting value: line 1 column 1 (char 0)

@@ -8,7 +8,7 @@ import json
 import time
 from datetime import datetime, timedelta
 from sqlalchemy import text
-from models import db, Project, Customer
+from .models import db, Project, Customer
 from decimal import Decimal
 
 # 全局缓存存储
@@ -239,55 +239,65 @@ def _do_calculate_dashboard_data():
             
             # 获取成交量TOP10买方
             volume_top10 = connection.execute(text("""
-                SELECT 
-                    buyer_name,
-                    total_quantity,
-                    avg_price
+                SELECT
+                    customer_name,
+                    SUM(total_quantity) as total_quantity,
+                    CASE
+                        WHEN SUM(total_quantity) > 0 THEN SUM(total_amount) / SUM(total_quantity)
+                        ELSE 0
+                    END as avg_price
                 FROM (
-                    SELECT 
-                        CASE 
-                            WHEN bj.buyer_entity_name IS NOT NULL THEN bj.buyer_entity_name
-                            WHEN gz.buyer_entity_name IS NOT NULL THEN gz.buyer_entity_name
-                            WHEN ul.member_name IS NOT NULL THEN ul.member_name
-                            WHEN ol.member_name IS NOT NULL THEN ol.member_name
-                            WHEN off.member_name IS NOT NULL THEN off.member_name
-                            ELSE '未知客户'
-                        END as buyer_name,
-                        -- 总成交量
-                        COALESCE(SUM(CAST(ul.total_quantity AS DECIMAL(15,2))), 0) + 
-                        COALESCE(SUM(CAST(ol.total_quantity AS DECIMAL(15,2))), 0) + 
-                        COALESCE(SUM(CAST(off.total_quantity AS DECIMAL(15,2))), 0) + 
-                        COALESCE(SUM(CAST(bj.transaction_quantity AS DECIMAL(15,2))), 0) + 
-                        COALESCE(SUM(CAST(gz.gpc_certifi_num AS DECIMAL(15,2))), 0) as total_quantity,
-                        -- 成交均价
-                        CASE 
-                            WHEN (COALESCE(SUM(CAST(ul.total_quantity AS DECIMAL(15,2))), 0) + 
-                                  COALESCE(SUM(CAST(ol.total_quantity AS DECIMAL(15,2))), 0) + 
-                                  COALESCE(SUM(CAST(off.total_quantity AS DECIMAL(15,2))), 0) + 
-                                  COALESCE(SUM(CAST(bj.transaction_quantity AS DECIMAL(15,2))), 0) + 
-                                  COALESCE(SUM(CAST(gz.gpc_certifi_num AS DECIMAL(15,2))), 0)) > 0
-                            THEN (COALESCE(SUM(CAST(ul.total_amount AS DECIMAL(15,2))), 0) + 
-                                  COALESCE(SUM(CAST(ol.total_amount AS DECIMAL(15,2))), 0) + 
-                                  COALESCE(SUM(CAST(off.total_amount AS DECIMAL(15,2))), 0) + 
-                                  COALESCE(SUM(CAST(bj.transaction_quantity AS DECIMAL(15,2)) * CAST(bj.transaction_price AS DECIMAL(15,2))), 0) + 
-                                  COALESCE(SUM(CAST(gz.total_cost AS DECIMAL(15,2))), 0)) / 
-                                 (COALESCE(SUM(CAST(ul.total_quantity AS DECIMAL(15,2))), 0) + 
-                                  COALESCE(SUM(CAST(ol.total_quantity AS DECIMAL(15,2))), 0) + 
-                                  COALESCE(SUM(CAST(off.total_quantity AS DECIMAL(15,2))), 0) + 
-                                  COALESCE(SUM(CAST(bj.transaction_quantity AS DECIMAL(15,2))), 0) + 
-                                  COALESCE(SUM(CAST(gz.gpc_certifi_num AS DECIMAL(15,2))), 0))
-                            ELSE 0 
-                        END as avg_price
-                    FROM projects p 
-                    JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
-                    LEFT JOIN gzpt_unilateral_listings ul ON n.project_id = ul.project_id AND n.production_year_month = ul.generate_ym AND ul.order_status = '1'
-                    LEFT JOIN gzpt_bilateral_online_trades ol ON n.project_id = ol.project_id AND n.production_year_month = ol.generate_ym
-                    LEFT JOIN gzpt_bilateral_offline_trades off ON n.project_id = off.project_id AND n.production_year_month = off.generate_ym
-                    LEFT JOIN beijing_power_exchange_trades bj ON n.project_id = bj.project_id AND n.production_year_month = bj.production_year_month
-                    LEFT JOIN guangzhou_power_exchange_trades gz ON n.project_id = gz.project_id AND n.production_year_month = gz.product_date
-                    GROUP BY buyer_name
-                    HAVING total_quantity > 0
-                ) as buyer_summary
+                    -- 绿证交易平台 - 单向挂牌
+                    SELECT
+                        ul.member_name as customer_name,
+                        CAST(ul.total_quantity AS DECIMAL(15,2)) as total_quantity,
+                        CAST(ul.total_amount AS DECIMAL(15,2)) as total_amount
+                    FROM gzpt_unilateral_listings ul
+                    WHERE ul.total_quantity IS NOT NULL AND ul.total_quantity > 0 AND ul.order_status = '1'
+
+                    UNION ALL
+
+                    -- 绿证交易平台 - 双边线下
+                    SELECT
+                        off.member_name as customer_name,
+                        CAST(off.total_quantity AS DECIMAL(15,2)) as total_quantity,
+                        CAST(off.total_amount AS DECIMAL(15,2)) as total_amount
+                    FROM gzpt_bilateral_offline_trades off
+                    WHERE off.total_quantity IS NOT NULL AND off.total_quantity > 0 AND off.order_status = '3'
+
+                    UNION ALL
+                    
+                    -- 绿证交易平台 - 双边线上 (如有)
+                    SELECT
+                        ol.member_name as customer_name,
+                        CAST(ol.total_quantity AS DECIMAL(15,2)) as total_quantity,
+                        CAST(ol.total_amount AS DECIMAL(15,2)) as total_amount
+                    FROM gzpt_bilateral_online_trades ol
+                    WHERE ol.total_quantity IS NOT NULL AND ol.total_quantity > 0
+
+                    UNION ALL
+
+                    -- 北京电力交易中心
+                    SELECT
+                        bj.buyer_entity_name as customer_name,
+                        CAST(bj.transaction_quantity AS DECIMAL(15,2)) as total_quantity,
+                        CAST(bj.transaction_quantity AS DECIMAL(15,2)) * CAST(bj.transaction_price AS DECIMAL(15,2)) as total_amount
+                    FROM beijing_power_exchange_trades bj
+                    WHERE bj.transaction_quantity IS NOT NULL AND bj.transaction_quantity > 0
+
+                    UNION ALL
+
+                    -- 广州电力交易中心
+                    SELECT
+                        gz.buyer_entity_name as customer_name,
+                        CAST(gz.gpc_certifi_num AS DECIMAL(15,2)) as total_quantity,
+                        CAST(gz.total_cost AS DECIMAL(15,2)) as total_amount
+                    FROM guangzhou_power_exchange_trades gz
+                    WHERE gz.gpc_certifi_num IS NOT NULL AND gz.gpc_certifi_num > 0
+                ) as all_trades
+                WHERE customer_name IS NOT NULL AND customer_name != '未知客户'
+                GROUP BY customer_name
+                HAVING total_quantity > 0
                 ORDER BY total_quantity DESC
                 LIMIT 10
             """)).fetchall()

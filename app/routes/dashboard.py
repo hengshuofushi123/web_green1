@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify
 from flask_login import login_required, current_user
-from models import db, Project, User, FAQ
+from ..models import db, Project, User, FAQ
 from sqlalchemy import text, func, desc, or_, and_
 from decimal import Decimal
 import calendar
@@ -11,9 +11,9 @@ import numpy as np
 import json
 import requests
 from datetime import datetime, timedelta
-from utils import generate_random_password, update_pwd_excel, project_to_dict, populate_project_from_form
+from ..utils import generate_random_password, update_pwd_excel, project_to_dict, populate_project_from_form
 from config import TABLE_HEADER_ORDERS
-from dashboard_cache import get_cached_data, calculate_dashboard_data, get_cache_info
+from ..dashboard_cache import get_cached_data, calculate_dashboard_data, get_cache_info
 
 dashboard_bp = Blueprint('dashboard', __name__, url_prefix='/dashboard')
 
@@ -2106,7 +2106,7 @@ def customer_transactions():
 @login_required
 def customer_info():
     """客户信息页面"""
-    from models import Customer
+    from ..models import Customer
     
     # 获取客户信息表中的客户范围，与customer_transactions页面保持一致
     # 添加项目权限控制
@@ -2249,7 +2249,7 @@ def customer_map():
 @login_required
 def get_province_transaction_data():
     """获取各省份成交量数据API - 复用customer_transactions的查询逻辑"""
-    from models import Customer
+    from ..models import Customer
     
     # 移除项目权限控制，所有用户看到完整数据
     projects = Project.query.all()
@@ -2479,7 +2479,7 @@ def get_seller_province_transaction_data():
 @login_required
 def update_customer():
     """更新客户信息API"""
-    from models import Customer
+    from ..models import Customer
     
     try:
         data = request.get_json()
@@ -2850,7 +2850,7 @@ def expected_price():
 @login_required
 def get_expected_prices():
     """获取当前用户的期望价格数据"""
-    from models import ExpectedPrice, SystemSetting
+    from ..models import ExpectedPrice, SystemSetting
     
     # 检查是否允许查看所有单位的价格
     show_all = False
@@ -2892,7 +2892,7 @@ def get_expected_prices():
 @login_required
 def create_expected_price():
     """创建期望价格"""
-    from models import ExpectedPrice
+    from ..models import ExpectedPrice
     
     data = request.json
     if not data or 'production_year' not in data or 'price' not in data:
@@ -2938,7 +2938,7 @@ def create_expected_price():
 @login_required
 def update_expected_price(price_id):
     """更新期望价格"""
-    from models import ExpectedPrice
+    from ..models import ExpectedPrice
     
     data = request.json
     if not data or 'price' not in data:
@@ -2973,7 +2973,7 @@ def update_expected_price(price_id):
 @login_required
 def delete_expected_price(price_id):
     """删除期望价格"""
-    from models import ExpectedPrice
+    from ..models import ExpectedPrice
     
     price = ExpectedPrice.query.get_or_404(price_id)
     
@@ -2993,7 +2993,7 @@ def delete_expected_price(price_id):
 @login_required
 def get_all_expected_prices():
     """管理员获取所有期望价格数据"""
-    from models import ExpectedPrice
+    from ..models import ExpectedPrice
     
     if not current_user.is_admin:
         return jsonify({'error': '无权访问'}), 403
@@ -3018,7 +3018,7 @@ def get_all_expected_prices():
 @login_required
 def get_show_all_prices_setting():
     """获取是否显示所有价格的设置"""
-    from models import SystemSetting
+    from ..models import SystemSetting
     
     if not current_user.is_admin:
         return jsonify({'error': '无权访问'}), 403
@@ -3205,7 +3205,7 @@ def get_dashboard_chart_data():
 @login_required
 def update_show_all_prices_setting():
     """更新是否显示所有价格的设置"""
-    from models import SystemSetting
+    from ..models import SystemSetting
     
     if not current_user.is_admin:
         return jsonify({'error': '无权访问'}), 403

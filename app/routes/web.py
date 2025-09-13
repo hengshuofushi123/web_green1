@@ -7,8 +7,8 @@ import pandas as pd
 import io
 import os
 from datetime import datetime
-from models import db, User, Project
-from utils import generate_random_password, update_pwd_excel, project_to_dict, populate_project_from_form
+from ..models import db, User, Project
+from ..utils import generate_random_password, update_pwd_excel, project_to_dict, populate_project_from_form
 
 web = Blueprint('web', __name__)
 
