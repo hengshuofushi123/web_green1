@@ -2248,232 +2248,34 @@ def customer_map():
 @dashboard_bp.route('/api/province_transaction_data')
 @login_required
 def get_province_transaction_data():
-    """获取各省份成交量数据API - 复用customer_transactions的查询逻辑"""
-    from ..models import Customer
+    """获取各省份【买方】成交量数据API - (已修改为从缓存读取)"""
+    cached_data = get_cached_data()
     
-    # 移除项目权限控制，所有用户看到完整数据
-    projects = Project.query.all()
-    project_ids_list = [p.id for p in projects]
-    
-    if not project_ids_list:
-        return jsonify({'province_data': []})
-    
-    with db.engine.connect() as connection:
-        # 使用不限时间的生产期范围
-        start_month = '0000-01'
-        end_month = '9999-12'
-        
-        # 复用customer_transactions函数中的正确SQL查询
-        transaction_sql = """
-            SELECT 
-                CASE 
-                    WHEN bj.buyer_entity_name IS NOT NULL THEN bj.buyer_entity_name
-                    WHEN gz.buyer_entity_name IS NOT NULL THEN gz.buyer_entity_name
-                    WHEN ul.member_name IS NOT NULL THEN ul.member_name
-                    WHEN ol.member_name IS NOT NULL THEN ol.member_name
-                    WHEN off.member_name IS NOT NULL THEN off.member_name
-                    ELSE '未知客户'
-                END as customer_name,
-                
-                -- 总成交量
-                COALESCE(SUM(CAST(ul.total_quantity AS DECIMAL(15,2))), 0) + 
-                COALESCE(SUM(CAST(ol.total_quantity AS DECIMAL(15,2))), 0) + 
-                COALESCE(SUM(CAST(off.total_quantity AS DECIMAL(15,2))), 0) + 
-                COALESCE(SUM(CAST(bj.transaction_quantity AS DECIMAL(15,2))), 0) + 
-                COALESCE(SUM(CAST(gz.gpc_certifi_num AS DECIMAL(15,2))), 0) as total_quantity
-            FROM projects p 
-            JOIN nyj_green_certificate_ledger n ON p.id = n.project_id
-            LEFT JOIN gzpt_unilateral_listings ul ON n.project_id = ul.project_id AND n.production_year_month = ul.generate_ym AND ul.order_status = '1'
-            LEFT JOIN gzpt_bilateral_online_trades ol ON n.project_id = ol.project_id AND n.production_year_month = ol.generate_ym
-            LEFT JOIN gzpt_bilateral_offline_trades off ON n.project_id = off.project_id AND n.production_year_month = off.generate_ym
-            LEFT JOIN beijing_power_exchange_trades bj ON n.project_id = bj.project_id AND n.production_year_month = bj.production_year_month
-            LEFT JOIN guangzhou_power_exchange_trades gz ON n.project_id = gz.project_id AND n.production_year_month = gz.product_date
-            WHERE p.id IN :project_ids
-            AND n.production_year_month >= :start_month
-            AND n.production_year_month <= :end_month
-            GROUP BY customer_name
-            HAVING total_quantity > 0
-        """
-        
-        transaction_result = connection.execute(
-            text(transaction_sql),
-            {
-                "project_ids": project_ids_list,
-                "start_month": start_month,
-                "end_month": end_month
-            }
-        )
-        
-        # 按客户名称聚合交易量
-        customer_volumes = {}
-        for row in transaction_result:
-            if row.customer_name and row.customer_name != '未知客户':
-                customer_volumes[row.customer_name] = float(row.total_quantity or 0)
-    
-    # 直接从数据库查询所有客户的省份信息，避免IN子句参数过多
-    province_volumes = {}
-    
-    # 获取所有有省份信息的客户
-    all_customers = Customer.query.filter(
-        Customer.province.isnot(None),
-        Customer.province != '未设置'
-    ).all()
-    
-    # 按省份聚合成交量
-    for customer in all_customers:
-        if customer.customer_name in customer_volumes:
-            province = customer.province
-            volume = customer_volumes[customer.customer_name]
-            if province not in province_volumes:
-                province_volumes[province] = 0
-            province_volumes[province] += volume
-    
-    # 省份名称映射：将完整名称转换为热力图识别的简化名称
-    province_name_mapping = {
-        '北京市': '北京',
-        '天津市': '天津', 
-        '河北省': '河北',
-        '山西省': '山西',
-        '内蒙古自治区': '内蒙古',
-        '辽宁省': '辽宁',
-        '吉林省': '吉林',
-        '黑龙江省': '黑龙江',
-        '上海市': '上海',
-        '江苏省': '江苏',
-        '浙江省': '浙江',
-        '安徽省': '安徽',
-        '福建省': '福建',
-        '江西省': '江西',
-        '山东省': '山东',
-        '河南省': '河南',
-        '湖北省': '湖北',
-        '湖南省': '湖南',
-        '广东省': '广东',
-        '广西壮族自治区': '广西',
-        '海南省': '海南',
-        '重庆市': '重庆',
-        '四川省': '四川',
-        '贵州省': '贵州',
-        '云南省': '云南',
-        '西藏自治区': '西藏',
-        '陕西省': '陕西',
-        '甘肃省': '甘肃',
-        '青海省': '青海',
-        '宁夏回族自治区': '宁夏',
-        '新疆维吾尔自治区': '新疆',
-        '台湾省': '台湾',
-        '香港特别行政区': '香港',
-        '澳门特别行政区': '澳门'
-    }
-    
-    # 转换为前端需要的格式，并映射省份名称
-    province_data = []
-    for province, volume in province_volumes.items():
-        # 使用映射表转换省份名称，如果没有映射则使用原名称
-        mapped_name = province_name_mapping.get(province, province)
-        province_data.append({
-            'name': mapped_name,
-            'value': round(volume / 10000, 2)  # 转换为万张单位
+    if cached_data and 'map_buyer_provinces' in cached_data:
+        province_data = cached_data['map_buyer_provinces']
+        return jsonify({
+            'success': True,
+            'data': province_data
         })
-    
-    # 按成交量降序排序
-    province_data.sort(key=lambda x: x['value'], reverse=True)
-    
-    return jsonify({
-        'success': True,
-        'data': province_data,
-        'province_data': province_data  # 保持向后兼容
-    })
+    else:
+        # 缓存未生成时返回空数据，避免前端报错
+        return jsonify({'success': True, 'data': []})
 
 @dashboard_bp.route('/api/seller_province_transaction_data')
 @login_required
 def get_seller_province_transaction_data():
-    """获取各省份卖方成交量数据API"""
+    """获取各省份【卖方】成交量数据API - (已修改为从缓存读取)"""
+    cached_data = get_cached_data()
     
-    # 移除项目权限控制，所有用户看到完整数据
-    projects = Project.query.all()
-    project_ids_list = [p.id for p in projects]
-    
-    if not project_ids_list:
-        return jsonify({'province_data': []})
-    
-    with db.engine.connect() as connection:
-        # 使用不限时间的生产期范围
-        start_month = '0000-01'
-        end_month = '9999-12'
-        
-        # 查询卖方成交量数据 - 基于项目的省份信息
-        seller_sql = """
-            SELECT province, COALESCE(SUM(CAST(sold_quantity AS DECIMAL(15,2))), 0) as sales
-            FROM nyj_green_certificate_ledger 
-            WHERE sold_quantity IS NOT NULL AND sold_quantity != '' AND province IS NOT NULL
-            GROUP BY province 
-            ORDER BY sales DESC 
-        """
-        
-
-
-        seller_result = connection.execute(
-            text(seller_sql),
-            #【注意】如果原来的代码有参数绑定，这里可能需要调整
-        )
-        
-        # 省份名称映射：将完整名称转换为热力图识别的简化名称
-        province_name_mapping = {
-            '北京市': '北京',
-            '天津市': '天津', 
-            '河北省': '河北',
-            '山西省': '山西',
-            '内蒙古自治区': '内蒙古',
-            '辽宁省': '辽宁',
-            '吉林省': '吉林',
-            '黑龙江省': '黑龙江',
-            '上海市': '上海',
-            '江苏省': '江苏',
-            '浙江省': '浙江',
-            '安徽省': '安徽',
-            '福建省': '福建',
-            '江西省': '江西',
-            '山东省': '山东',
-            '河南省': '河南',
-            '湖北省': '湖北',
-            '湖南省': '湖南',
-            '广东省': '广东',
-            '广西壮族自治区': '广西',
-            '海南省': '海南',
-            '重庆市': '重庆',
-            '四川省': '四川',
-            '贵州省': '贵州',
-            '云南省': '云南',
-            '西藏自治区': '西藏',
-            '陕西省': '陕西',
-            '甘肃省': '甘肃',
-            '青海省': '青海',
-            '宁夏回族自治区': '宁夏',
-            '新疆维吾尔自治区': '新疆',
-            '台湾省': '台湾',
-            '香港特别行政区': '香港',
-            '澳门特别行政区': '澳门'
-        }
-        
-        # 转换为前端需要的格式，并映射省份名称
-        province_data = []
-        for row in seller_result:
-            if row.province:
-                mapped_name = province_name_mapping.get(row.province, row.province)
-                province_data.append({
-                    'name': mapped_name,
-                    'value': round(float(row.sales or 0) / 10000, 2)  # 转换为万张单位
-                })
-        
-        # 按成交量降序排序
-        province_data.sort(key=lambda x: x['value'], reverse=True)
-        
+    if cached_data and 'map_seller_provinces' in cached_data:
+        province_data = cached_data['map_seller_provinces']
         return jsonify({
             'success': True,
-            'data': province_data,
-            'province_data': province_data  # 保持向后兼容
+            'data': province_data
         })
+    else:
+        # 缓存未生成时返回空数据，避免前端报错
+        return jsonify({'success': True, 'data': []})
 
 @dashboard_bp.route('/api/update_customer', methods=['POST'])
 @login_required

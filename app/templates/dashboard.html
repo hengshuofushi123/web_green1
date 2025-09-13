@@ -382,16 +382,22 @@ let selectedMonth = null;
   function loadProvinceData(type = 'buyer') {
     const apiUrl = type === 'seller' ? '/dashboard/api/seller_province_transaction_data' : '/dashboard/api/province_transaction_data';
     
+    // 显示加载动画
+    const mapLoading = document.getElementById('mapLoading');
+    if (mapLoading) mapLoading.style.display = 'flex';
+
     fetch(apiUrl)
       .then(response => response.json())
       .then(data => {
         if (data.success && chinaMapChart) {
           // 过滤掉南海诸岛
           const filteredData = data.data.filter(item => item.name !== '南海诸岛');
-          const maxValue = Math.max(...filteredData.map(item => item.value));
+          // 动态计算最大值，让颜色映射更准确
+          const maxValue = Math.max(...filteredData.map(item => item.value || 0));
+          
           chinaMapChart.setOption({
             visualMap: {
-              max: maxValue
+              max: maxValue > 0 ? maxValue : 1000 // 避免最大值为0时图例出错
             },
             series: [{
               data: filteredData
@@ -401,6 +407,10 @@ let selectedMonth = null;
       })
       .catch(error => {
         console.error('加载省份数据失败:', error);
+      })
+      .finally(() => {
+        // 隐藏加载动画
+        if (mapLoading) mapLoading.style.display = 'none';
       });
   }
   

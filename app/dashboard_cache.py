@@ -47,17 +47,13 @@ def calculate_dashboard_data():
     dashboard_cache['is_calculating'] = True
     
     try:
-        # 确保在Flask应用上下文中执行
-        from flask import current_app
-        if not current_app:
-            from app import app
-            with app.app_context():
-                return _do_calculate_dashboard_data()
-        else:
-            return _do_calculate_dashboard_data()
+        # 【关键改动】: 移除了原来那段复杂的、有问题的app_context处理逻辑。
+        # 现在，无论是Web请求还是后台调度器，调用方都会确保在正确的上下文中。
+        return _do_calculate_dashboard_data()
     except Exception as e:
         print(f"[{datetime.now()}] Dashboard数据计算出错: {str(e)}")
-        return None
+        # 出错时可以考虑返回旧的缓存数据，避免前端页面崩溃
+        return dashboard_cache['data']
     finally:
         dashboard_cache['is_calculating'] = False
 
@@ -139,6 +135,7 @@ def _do_calculate_dashboard_data():
             
             if not project_ids_list:
                 buyer_province_sales = []
+                full_buyer_provinces_for_map = []
             else:
                 # 获取交易数据
                 transaction_sql = """
@@ -213,6 +210,7 @@ def _do_calculate_dashboard_data():
                 }
                 
                 # 转换为前端需要的格式
+                # 【修改点 A】: 转换买方省份数据，并保存完整列表
                 province_data_list = []
                 for province, volume in province_volumes.items():
                     mapped_name = province_name_mapping.get(province, province)
@@ -221,9 +219,14 @@ def _do_calculate_dashboard_data():
                         'value': round(volume / 10000, 2)
                     })
                 
-                # 按成交量降序排序并取前10
                 province_data_list.sort(key=lambda x: x['value'], reverse=True)
-                buyer_province_sales = [(item['name'], item['value'] * 10000) for item in province_data_list[:10]]
+                
+                # 这一份是完整的买方省份数据，用于热力图
+                full_buyer_provinces_for_map = province_data_list
+                
+                # 这一份是截取前10的数据，用于Top10榜单
+                top_buyer_provinces = province_data_list[:10]
+
             
             # 获取按二级单位的销售TOP10
             unit_sales = connection.execute(text("""
@@ -401,17 +404,14 @@ def _do_calculate_dashboard_data():
             'avg_price': round(avg_price, 1)
         }
         
-        # 处理省份销售数据
-        top_provinces = [
-            {'name': row[0], 'value': round(float(row[1])/10000, 1)} 
+        # 【修改点 B】: 处理卖方省份数据，并保存完整列表
+        # 这一份是完整的卖方省份数据，用于热力图
+        full_seller_provinces = [
+            {'name': row[0], 'value': round(float(row[1])/10000, 2)} 
             for row in province_sales
         ] if province_sales else []
-        
-        # 处理买方省份数据
-        top_buyer_provinces = [
-            {'name': row[0], 'value': round(float(row[1])/10000, 1)} 
-            for row in buyer_province_sales
-        ] if buyer_province_sales else []
+        # 这一份是截取前10的数据，用于Top10榜单
+        top_provinces = full_seller_provinces[:10]
         
         # 处理二级单位数据
         top_secondary_units = [
@@ -464,11 +464,15 @@ def _do_calculate_dashboard_data():
                 'total_sold': round(float(row[5])/10000, 1),
             })
         
-        # 组装最终数据
+        # 【修改点 C】: 组装最终数据，加入为热力图准备的新键
         cached_data = {
             'stats': stats,
             'top_provinces': top_provinces,
             'top_buyer_provinces': top_buyer_provinces,
+            # --- 新增的两个键 ---
+            'map_seller_provinces': full_seller_provinces,
+            'map_buyer_provinces': full_buyer_provinces_for_map,
+            # --- ---------------- ---
             'top_secondary_units': top_secondary_units,
             'top_volume_trades': top_volume_trades,
             'top_price_trades': top_price_trades,
