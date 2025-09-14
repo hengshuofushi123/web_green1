@@ -126,7 +126,6 @@ def _do_calculate_dashboard_data():
                 WHERE sold_quantity IS NOT NULL AND sold_quantity != '' AND province IS NOT NULL
                 GROUP BY province 
                 ORDER BY sales DESC 
-                LIMIT 10
             """)).fetchall()
             
             # 获取按买方省份的成交TOP10

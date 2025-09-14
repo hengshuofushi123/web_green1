@@ -386,12 +386,59 @@ let selectedMonth = null;
     const mapLoading = document.getElementById('mapLoading');
     if (mapLoading) mapLoading.style.display = 'flex';
 
+    // 省份名称映射表 (全称 -> 简称)
+    const provinceNameMap = {
+        '新疆维吾尔自治区': '新疆',
+        '黑龙江省': '黑龙江',
+        '山东省': '山东',
+        '宁夏回族自治区': '宁夏',
+        '广西壮族自治区': '广西',
+        '河北省': '河北',
+        '山西省': '山西',
+        '云南省': '云南',
+        '湖北省': '湖北',
+        '内蒙古自治区': '内蒙古',
+        '甘肃省': '甘肃',
+        '辽宁省': '辽宁',
+        '吉林省': '吉林',
+        '河南省': '河南',
+        '湖南省': '湖南',
+        '江西省': '江西',
+        '安徽省': '安徽',
+        '青海省': '青海',
+        '广东省': '广东',
+        '四川省': '四川',
+        '贵州省': '贵州',
+        '陕西省': '陕西',
+        '西藏自治区': '西藏',
+        '天津市': '天津',
+        '福建省': '福建',
+        '江苏省': '江苏',
+        '上海市': '上海',
+        '浙江省': '浙江',
+        '北京市': '北京',
+        '重庆市': '重庆',
+        '海南省': '海南',
+        // 其他可能需要的映射
+    };
+
+
     fetch(apiUrl)
       .then(response => response.json())
       .then(data => {
         if (data.success && chinaMapChart) {
+          
+          // *************** 核心修改点 STARTS ***************
+          // 使用映射表转换省份名称
+          const mappedData = data.data.map(item => ({
+              name: provinceNameMap[item.name] || item.name, // 如果在映射表中找到简称，则使用简称，否则使用原名
+              value: item.value
+          }));
+          // *************** 核心修改点 ENDS ***************
+
           // 过滤掉南海诸岛
-          const filteredData = data.data.filter(item => item.name !== '南海诸岛');
+          const filteredData = mappedData.filter(item => item.name !== '南海诸岛');
+          
           // 动态计算最大值，让颜色映射更准确
           const maxValue = Math.max(...filteredData.map(item => item.value || 0));
           
@@ -400,7 +447,7 @@ let selectedMonth = null;
               max: maxValue > 0 ? maxValue : 1000 // 避免最大值为0时图例出错
             },
             series: [{
-              data: filteredData
+              data: filteredData // 使用转换后的数据
             }]
           });
         }
