@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import text
 from .models import db, Project, Customer
 from decimal import Decimal
+from .utils import get_province_short_name
 
 # 全局缓存存储
 dashboard_cache = {
@@ -411,6 +412,8 @@ def _do_calculate_dashboard_data():
         ] if province_sales else []
         # 这一份是截取前10的数据，用于Top10榜单
         top_provinces = full_seller_provinces[:10]
+
+        top_provinces = [{'name': get_province_short_name(row['name']), 'value': row['value']} for row in top_provinces]
         
         # 处理二级单位数据
         top_secondary_units = [

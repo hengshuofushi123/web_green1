@@ -119,3 +119,55 @@ def populate_project_from_form(project, form_data):
     project.has_green_cert_transaction = 'has_green_cert_transaction' in form_data
 
     return project
+
+
+PROVINCE_MAP = {
+    '北京市': '北京',
+    '天津市': '天津',
+    '河北省': '河北',
+    '山西省': '山西',
+    '内蒙古自治区': '内蒙古',
+    '辽宁省': '辽宁',
+    '吉林省': '吉林',
+    '黑龙江省': '黑龙江',
+    '上海市': '上海',
+    '江苏省': '江苏',
+    '浙江省': '浙江',
+    '安徽省': '安徽',
+    '福建省': '福建',
+    '江西省': '江西',
+    '山东省': '山东',
+    '河南省': '河南',
+    '湖北省': '湖北',
+    '湖南省': '湖南',
+    '广东省': '广东',
+    '广西壮族自治区': '广西',
+    '海南省': '海南',
+    '重庆市': '重庆',
+    '四川省': '四川',
+    '贵州省': '贵州',
+    '云南省': '云南',
+    '西藏自治区': '西藏',
+    '陕西省': '陕西',
+    '甘肃省': '甘肃',
+    '青海省': '青海',
+    '宁夏回族自治区': '宁夏',
+    '新疆维吾尔自治区': '新疆',
+    '台湾省': '台湾',
+    '香港特别行政区': '香港',
+    '澳门特别行政区': '澳门'
+}
+
+def get_province_short_name(full_name):
+    """将省份全称转换为简称。"""
+    if not full_name:
+        return ''
+    # 优先从映射中查找
+    for key, value in PROVINCE_MAP.items():
+        if key in full_name:
+            return value
+    # 如果已经是简称，直接返回
+    if full_name in PROVINCE_MAP.values():
+        return full_name
+    # 作为备用方案，移除常见的后缀
+    return full_name.replace('省', '').replace('市', '').replace('自治区', '').replace('壮族', '').replace('回族', '').replace('维吾尔', '').replace('特别行政区', '')
