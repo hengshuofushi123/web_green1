@@ -1123,16 +1123,29 @@ def statistics():
                 GROUP BY dimension_value
             ),
 
-            -- 4. 整合所有维度
+            -- 4. 装机容量计算
+            CapacityData AS (
+                SELECT
+                    {group_by_clause} as dimension_value,
+                    COALESCE(SUM(CAST(p.capacity_mw AS DECIMAL(15,2))), 0) as total_capacity
+                FROM projects p
+                WHERE p.id IN :project_ids
+                  AND {group_by_clause} IS NOT NULL
+                GROUP BY {group_by_clause}
+            ),
+
+            -- 5. 整合所有维度
             AllDimensions AS (
                 SELECT dimension_value FROM LedgerIssuance
                 UNION
                 SELECT dimension_value FROM IssuedPlatformSales
                 UNION
                 SELECT dimension_value FROM TradingPlatformSales
+                UNION
+                SELECT dimension_value FROM CapacityData
             )
 
-            -- 5. 最终联接和计算 (注意：这里移除了最后的逗号)
+            -- 6. 最终联接和计算
             SELECT
                 d.dimension_value,
                 COALESCE(li.ordinary_total, 0) as ordinary_total,
@@ -1142,11 +1155,14 @@ def statistics():
                     WHEN COALESCE(tps.trading_platform_sold, 0) > 0
                     THEN COALESCE(tps.trading_platform_amount, 0) / tps.trading_platform_sold
                     ELSE 0
-                END as avg_price
+                END as avg_price,
+                COALESCE(cd.total_capacity, 0) as total_capacity,
+                COALESCE(tps.trading_platform_amount, 0) as trading_platform_amount
             FROM AllDimensions d
             LEFT JOIN LedgerIssuance li ON d.dimension_value = li.dimension_value
             LEFT JOIN IssuedPlatformSales ips ON d.dimension_value = ips.dimension_value
             LEFT JOIN TradingPlatformSales tps ON d.dimension_value = tps.dimension_value
+            LEFT JOIN CapacityData cd ON d.dimension_value = cd.dimension_value
             ORDER BY ordinary_total DESC
         """)
         
@@ -1167,10 +1183,21 @@ def statistics():
             issued_platform_sold = int(row[2] or 0)
             trading_platform_sold = int(row[3] or 0)
             avg_price = round(float(row[4] or 0), 1)
+            total_capacity = round(float(row[5] or 0), 1)  # 装机容量（万千瓦）
+            trading_platform_amount = float(row[6] or 0)  # 交易平台总金额
             
             # 计算售出比例
             issued_ratio = round((issued_platform_sold / ordinary_total * 100), 1) if ordinary_total > 0 else 0
             trading_ratio = round((trading_platform_sold / ordinary_total * 100), 1) if ordinary_total > 0 else 0
+            
+            # 计算总收入（万元）= 售出量（交易平台）* 平均成交价 / 10000
+            total_income = round((trading_platform_sold * avg_price / 10000), 2) if trading_platform_sold > 0 and avg_price > 0 else 0
+            
+            # 计算度电增收（元/MWh）= 总收入 / 普通绿证 * 10000
+            per_mwh_income = round((total_income / ordinary_total * 10000), 2) if ordinary_total > 0 else 0
+            
+            # 计算单位千瓦收入（元/kW）= 总收入 / 装机容量
+            unit_kw_income = round((total_income / total_capacity), 2) if total_capacity > 0 else 0
             
             summary_data.append({
                 'dimension_value': row[0] or '未知',
@@ -1179,7 +1206,16 @@ def statistics():
                 'trading_platform_sold': trading_platform_sold,
                 'issued_ratio': issued_ratio,
                 'trading_ratio': trading_ratio,
-                'avg_price': avg_price
+                'avg_price': avg_price,  # 保持数字类型用于计算
+                'avg_price_display': f"{avg_price:.2f}",  # 格式化显示
+                'total_capacity': total_capacity,  # 保持数字类型用于计算
+                'total_capacity_display': f"{total_capacity:.1f}",  # 格式化显示
+                'total_income': total_income,  # 保持数字类型用于计算
+                'total_income_display': f"{total_income:.2f}",  # 格式化显示
+                'per_mwh_income': per_mwh_income,  # 保持数字类型用于计算
+                'per_mwh_income_display': f"{per_mwh_income:.2f}",  # 格式化显示
+                'unit_kw_income': unit_kw_income,  # 保持数字类型用于计算
+                'unit_kw_income_display': f"{unit_kw_income:.2f}"  # 格式化显示
             })
             chart_labels.append(row[0] or '未知')
             chart_issued.append(round(float(ordinary_total) / 10000, 1))  # 转万张
@@ -1193,6 +1229,8 @@ def statistics():
         total_ordinary = sum(row['ordinary_total'] for row in summary_data)
         total_issued_platform_sold = sum(row['issued_platform_sold'] for row in summary_data)
         total_trading_platform_sold = sum(row['trading_platform_sold'] for row in summary_data)
+        total_capacity_sum = sum(row['total_capacity'] for row in summary_data)
+        total_income_sum = sum(row['total_income'] for row in summary_data)
         
         # 计算汇总的售出比例
         total_issued_ratio = round((total_issued_platform_sold / total_ordinary * 100), 1) if total_ordinary > 0 else 0
@@ -1204,6 +1242,12 @@ def statistics():
             total_trading_amount += row['trading_platform_sold'] * row['avg_price']
         total_avg_price = round(total_trading_amount / total_trading_platform_sold, 1) if total_trading_platform_sold > 0 else 0
         
+        # 计算汇总的度电增收
+        total_per_mwh_income = round((total_income_sum / total_ordinary * 10000), 2) if total_ordinary > 0 else 0
+        
+        # 计算汇总的单位千瓦收入
+        total_unit_kw_income = round((total_income_sum / total_capacity_sum), 2) if total_capacity_sum > 0 else 0
+        
         # 创建汇总行
         summary_row = {
             'dimension_value': '汇总',
@@ -1212,7 +1256,16 @@ def statistics():
             'trading_platform_sold': total_trading_platform_sold,
             'issued_ratio': total_issued_ratio,
             'trading_ratio': total_trading_ratio,
-            'avg_price': total_avg_price
+            'avg_price': total_avg_price,  # 保持数字类型
+            'avg_price_display': f"{total_avg_price:.2f}",  # 格式化显示
+            'total_capacity': round(total_capacity_sum, 1),  # 保持数字类型
+            'total_capacity_display': f"{total_capacity_sum:.1f}",  # 格式化显示
+            'total_income': round(total_income_sum, 2),  # 保持数字类型
+            'total_income_display': f"{total_income_sum:.2f}",  # 格式化显示
+            'per_mwh_income': total_per_mwh_income,  # 保持数字类型
+            'per_mwh_income_display': f"{total_per_mwh_income:.2f}",  # 格式化显示
+            'unit_kw_income': total_unit_kw_income,  # 保持数字类型
+            'unit_kw_income_display': f"{total_unit_kw_income:.2f}"  # 格式化显示
         }
         
         # 将汇总行插入到第一位
@@ -1936,34 +1989,44 @@ def customer_analysis():
 @login_required
 def customer_transactions():
     """渲染客户分析页面，提供客户维度的交易数据汇总"""
-    
-    # 获取当前日期，设置默认时间范围
+
     current_date = datetime.now()
     default_start = f"{current_date.year}-01"
     default_end = f"{current_date.year}-{str(current_date.month).zfill(2)}"
-    
-    # 获取请求参数
-    start_date = request.args.get('start_date', default_start)
-    end_date = request.args.get('end_date', default_end)
-    
-    # 获取交易日期筛选参数
     current_date_str = current_date.strftime('%Y-%m-%d')
-    transaction_start_date = request.args.get('transaction_start_date', '')
-    transaction_end_date = request.args.get('transaction_end_date', current_date_str)
-    
-    # 移除客户类型判断逻辑
-    
+
+    # 检查请求中是否包含任何用于筛选的参数
+    # 如果包含，说明是用户在进行查询操作。
+    # 如果不包含，说明是首次加载页面。
+    is_query_action = 'start_date' in request.args or \
+                      'end_date' in request.args or \
+                      'transaction_start_date' in request.args or \
+                      'transaction_end_date' in request.args
+
+    if is_query_action:
+        # 用户正在查询，获取所有参数，如果不存在则视为空字符串
+        start_date = request.args.get('start_date', '')
+        end_date = request.args.get('end_date', '')
+        transaction_start_date = request.args.get('transaction_start_date', '')
+        transaction_end_date = request.args.get('transaction_end_date', '')
+    else:
+        # 首次加载页面，应用默认值
+        start_date = default_start
+        end_date = default_end
+        transaction_start_date = ''
+        transaction_end_date = current_date_str
+
     customer_data = []
-    
+
     # 添加项目权限控制
     query = Project.query
     # 非管理员只能查看自己的数据
     if not current_user.is_admin:
         query = query.filter(Project.secondary_unit == current_user.username)
-    
+
     projects = query.all()
     project_ids_list = [p.id for p in projects]
-    
+
     if not project_ids_list:
         return render_template('customer_analysis.html',
                              start_date=start_date,
@@ -1971,28 +2034,21 @@ def customer_transactions():
                              transaction_start_date=transaction_start_date,
                              transaction_end_date=transaction_end_date,
                              customer_data=customer_data)
-    
+
     with db.engine.connect() as connection:
-        # 生产期筛选策略
-        has_prod_params = ('start_date' in request.args) or ('end_date' in request.args)
-        if has_prod_params:
-            if start_date and end_date:
-                start_month = start_date[:7]
-                end_month = end_date[:7]
-            else:
-                start_month = '0000-01'
-                end_month = '9999-12'
+        # 生产期筛选策略：如果传入的日期不为空则使用，否则查询所有时间
+        if start_date and end_date:
+            start_month = start_date[:7]
+            end_month = end_date[:7]
         else:
-            start_month = default_start
-            end_month = default_end
+            start_month = '0000-01'
+            end_month = '9999-12'
 
         # 构建交易时间筛选的SQL片段
-        # 注意：为每个表单独构建筛选条件
         transaction_filters = {
             'ul': '', 'ol': '', 'off': '', 'bj': '', 'gz': ''
         }
         if transaction_start_date and transaction_end_date:
-            # 为确保覆盖全天，将 end_date 调整为 'YYYY-MM-DD 23:59:59'
             end_date_for_query = f"{transaction_end_date} 23:59:59"
             transaction_filters['ul'] = f"AND ul.order_time_str BETWEEN '{transaction_start_date}' AND '{end_date_for_query}'"
             transaction_filters['ol'] = f"AND ol.order_time_str BETWEEN '{transaction_start_date}' AND '{end_date_for_query}'"
@@ -2000,8 +2056,7 @@ def customer_transactions():
             transaction_filters['bj'] = f"AND bj.transaction_time BETWEEN '{transaction_start_date}' AND '{end_date_for_query}'"
             transaction_filters['gz'] = f"AND gz.deal_time BETWEEN '{transaction_start_date}' AND '{end_date_for_query}'"
 
-        # 构建新的、正确的SQL查询
-        # 核心思想：将每个交易平台的筛选逻辑都独立处理，然后汇总
+        # SQL 查询部分保持不变...
         complete_sql = f"""
             SELECT
                 customer_name,
@@ -2081,20 +2136,41 @@ def customer_transactions():
             ORDER BY total_quantity DESC
         """
 
-        # 执行查询
         result = connection.execute(
             text(complete_sql),
-            {"project_ids": project_ids_list, "start_month": start_month, "end_month": end_month}
+            {"project_ids": tuple(project_ids_list), "start_month": start_month, "end_month": end_month}
         )
         
-        # 处理查询结果
+        # 计算合计数据
+        total_quantity_sum = 0
+        total_amount_sum = 0
+        
         for row in result:
+            quantity = float(row.total_quantity)
+            price = float(row.avg_price)
+            amount = quantity * price
+            
+            total_quantity_sum += quantity
+            total_amount_sum += amount
+            
             customer_data.append({
                 'customer_name': row.customer_name,
-                'total_quantity': f"{float(row.total_quantity):.2f}",
-                'avg_price': f"{float(row.avg_price):.2f}"
+                'total_quantity': f"{quantity:.2f}",
+                'avg_price': f"{price:.2f}"
             })
-    
+        
+        # 计算合计行的平均价格
+        total_avg_price = total_amount_sum / total_quantity_sum if total_quantity_sum > 0 else 0
+        
+        # 在列表开头插入合计行
+        if customer_data:  # 只有当有数据时才添加合计行
+            customer_data.insert(0, {
+                'customer_name': '合计',
+                'total_quantity': f"{total_quantity_sum:.2f}",
+                'avg_price': f"{total_avg_price:.2f}",
+                'is_total_row': True  # 标记这是合计行
+            })
+
     return render_template('customer_analysis.html',
                          start_date=start_date,
                          end_date=end_date,
@@ -2108,6 +2184,13 @@ def customer_info():
     """客户信息页面"""
     from ..models import Customer
     
+    # 获取分页参数
+    page = request.args.get('page', 1, type=int)
+    per_page = 20  # 每页20条数据
+    
+    # 获取筛选参数
+    customer_type_filter = request.args.get('customer_type', '')
+    
     # 获取客户信息表中的客户范围，与customer_transactions页面保持一致
     # 添加项目权限控制
     query = Project.query
@@ -2119,6 +2202,7 @@ def customer_info():
     
     if not project_ids_list:
         customers = []
+        total_customers = 0
     else:
         with db.engine.connect() as connection:
             # 获取所有有交易记录的客户名称（不限时间）
@@ -2204,15 +2288,22 @@ def customer_info():
         missing_names = set(customer_names) - existing_names
         
         for name in missing_names:
-            new_customer = Customer(
-                customer_name=name,
-                customer_type='未设置',
-                province='未设置'
-            )
-            db.session.add(new_customer)
+            # 使用merge来避免主键冲突，如果记录已存在则更新，不存在则插入
+            existing_customer = Customer.query.filter_by(customer_name=name).first()
+            if not existing_customer:
+                new_customer = Customer(
+                    customer_name=name,
+                    customer_type='未设置',
+                    province='未设置'
+                )
+                db.session.add(new_customer)
         
         if missing_names:
-            db.session.commit()
+            try:
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                print(f"插入客户记录时出错: {e}")
             # 重新查询获取完整列表
             customers = Customer.query.filter(Customer.customer_name.in_(customer_names)).all()
         
@@ -2227,6 +2318,33 @@ def customer_info():
                 return (2, -volume)  # 未设置排在最后
         
         customers.sort(key=sort_key)
+        
+        # 应用客户类型筛选
+        if customer_type_filter:
+            filter_types = [t.strip() for t in customer_type_filter.split(',') if t.strip()]
+            if filter_types:
+                customers = [c for c in customers if c.customer_type in filter_types]
+        
+        total_customers = len(customers)
+        
+        # 分页处理
+        start_index = (page - 1) * per_page
+        end_index = start_index + per_page
+        customers = customers[start_index:end_index]
+    
+    # 计算分页信息
+    total_pages = (total_customers + per_page - 1) // per_page if total_customers > 0 else 1
+    has_prev = page > 1
+    has_next = page < total_pages
+    prev_num = page - 1 if has_prev else None
+    next_num = page + 1 if has_next else None
+    
+    # 生成页码列表（显示当前页前后2页）
+    page_range = []
+    start_page = max(1, page - 2)
+    end_page = min(total_pages, page + 2)
+    for p in range(start_page, end_page + 1):
+        page_range.append(p)
     
     # 中国省级行政区列表
     provinces = [
@@ -2237,7 +2355,19 @@ def customer_info():
         '台湾省', '香港特别行政区', '澳门特别行政区'
     ]
     
-    return render_template('customer_info.html', customers=customers, provinces=provinces)
+    return render_template('customer_info.html', 
+                         customers=customers, 
+                         provinces=provinces,
+                         page=page,
+                         total_pages=total_pages,
+                         total_customers=total_customers,
+                         has_prev=has_prev,
+                         has_next=has_next,
+                         prev_num=prev_num,
+                         next_num=next_num,
+                         page_range=page_range,
+                         per_page=per_page,
+                         customer_type_filter=customer_type_filter)
 
 @dashboard_bp.route('/customer_analysis/map')
 @login_required
@@ -2328,24 +2458,24 @@ def get_customer_details():
     if not customer_name:
         return jsonify({'error': '缺少客户名称参数'}), 400
 
-    # 获取时间范围参数
-    current_date = datetime.now()
-    default_start = f"{current_date.year}-01"
-    default_end = f"{current_date.year}-{str(current_date.month).zfill(2)}"
+    # 获取时间范围参数，如果不存在或为空，则为 None
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    transaction_start_date = request.args.get('transaction_start_date')
+    transaction_end_date = request.args.get('transaction_end_date')
 
-    start_date = request.args.get('start_date', default_start)
-    end_date = request.args.get('end_date', default_end)
-    transaction_start_date = request.args.get('transaction_start_date', '')
-    transaction_end_date = request.args.get('transaction_end_date', current_date.strftime('%Y-%m-%d'))
-
+    # --- 修改开始 ---
     # 处理生产月份范围
-    has_prod_params = ('start_date' in request.args) or ('end_date' in request.args)
-    if has_prod_params:
-        start_month = start_date[:7] if start_date else '0000-01'
-        end_month = end_date[:7] if end_date else '9999-12'
+    # 如果用户提供了 start_date 和 end_date (即使是空字符串)，我们尊重用户的输入
+    # 如果它们根本不存在于请求中，我们也视为不筛选
+    if start_date and end_date:
+        start_month = start_date[:7]
+        end_month = end_date[:7]
     else:
-        start_month = default_start
-        end_month = default_end
+        # 当任意一个日期为空或不存在时，都视为不限制生产时间
+        start_month = '0000-01'
+        end_month = '9999-12'
+    # --- 修改结束 ---
 
     # 构建交易时间筛选的SQL片段
     transaction_filters = {
@@ -2370,7 +2500,7 @@ def get_customer_details():
     if not project_ids_list:
         return jsonify({'details': []})
 
-    # 使用 UNION ALL 构建准确的查询
+    # 使用 UNION ALL 构建准确的查询 (SQL部分保持不变)
     details_sql = f"""
         SELECT * FROM (
             -- 1. 绿证交易平台 - 单向挂牌
@@ -2455,7 +2585,7 @@ def get_customer_details():
         result = connection.execute(
             text(details_sql),
             {
-                "project_ids": project_ids_list, 
+                "project_ids": tuple(project_ids_list), 
                 "start_month": start_month, 
                 "end_month": end_month,
                 "customer_name": customer_name

@@ -13,13 +13,17 @@
                     <div class="mb-3 p-3 bg-light rounded">
                         <h6 class="mb-2">客户类型筛选：</h6>
                         <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="checkbox" id="companyFilter" checked>
+                            <input class="form-check-input" type="checkbox" id="companyFilter" 
+                                   {% if not customer_type_filter or '公司' in customer_type_filter %}checked{% endif %} 
+                                   onchange="filterCustomers()">
                             <label class="form-check-label" for="companyFilter">
                                 公司客户
                             </label>
                         </div>
                         <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="checkbox" id="personalFilter">
+                            <input class="form-check-input" type="checkbox" id="personalFilter" 
+                                   {% if not customer_type_filter or '个人' in customer_type_filter %}checked{% endif %} 
+                                   onchange="filterCustomers()">
                             <label class="form-check-label" for="personalFilter">
                                 个人客户
                             </label>
@@ -66,7 +70,80 @@
                         </table>
                     </div>
                     
-                    {% if not customers %}
+                    {% if customers %}
+                    <!-- 分页控件 -->
+                    <div class="d-flex justify-content-between align-items-center mt-4">
+                        <div class="pagination-info">
+                            <span class="text-muted">
+                                显示第 {{ (page - 1) * per_page + 1 }} - {{ [page * per_page, total_customers] | min }} 条，
+                                共 {{ total_customers }} 条记录
+                            </span>
+                        </div>
+                        
+                        {% if total_pages > 1 %}
+                        <nav aria-label="客户信息分页">
+                            <ul class="pagination pagination-sm mb-0">
+                                <!-- 首页 -->
+                                 {% if has_prev %}
+                                 <li class="page-item">
+                                     <a class="page-link" href="{{ url_for('dashboard.customer_info', page=1, customer_type=customer_type_filter) }}" aria-label="首页">
+                                         <span aria-hidden="true">&laquo;&laquo;</span>
+                                     </a>
+                                 </li>
+                                 <!-- 上一页 -->
+                                 <li class="page-item">
+                                     <a class="page-link" href="{{ url_for('dashboard.customer_info', page=prev_num, customer_type=customer_type_filter) }}" aria-label="上一页">
+                                         <span aria-hidden="true">&laquo;</span>
+                                     </a>
+                                 </li>
+                                {% else %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">&laquo;&laquo;</span>
+                                </li>
+                                <li class="page-item disabled">
+                                    <span class="page-link">&laquo;</span>
+                                </li>
+                                {% endif %}
+                                
+                                <!-- 页码 -->
+                                 {% for p in page_range %}
+                                     {% if p == page %}
+                                     <li class="page-item active">
+                                         <span class="page-link">{{ p }}</span>
+                                     </li>
+                                     {% else %}
+                                     <li class="page-item">
+                                         <a class="page-link" href="{{ url_for('dashboard.customer_info', page=p, customer_type=customer_type_filter) }}">{{ p }}</a>
+                                     </li>
+                                     {% endif %}
+                                 {% endfor %}
+                                 
+                                 <!-- 下一页 -->
+                                 {% if has_next %}
+                                 <li class="page-item">
+                                     <a class="page-link" href="{{ url_for('dashboard.customer_info', page=next_num, customer_type=customer_type_filter) }}" aria-label="下一页">
+                                         <span aria-hidden="true">&raquo;</span>
+                                     </a>
+                                 </li>
+                                 <!-- 末页 -->
+                                 <li class="page-item">
+                                     <a class="page-link" href="{{ url_for('dashboard.customer_info', page=total_pages, customer_type=customer_type_filter) }}" aria-label="末页">
+                                         <span aria-hidden="true">&raquo;&raquo;</span>
+                                     </a>
+                                 </li>
+                                {% else %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">&raquo;</span>
+                                </li>
+                                <li class="page-item disabled">
+                                    <span class="page-link">&raquo;&raquo;</span>
+                                </li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+                        {% endif %}
+                    </div>
+                    {% else %}
                     <div class="text-center py-4">
                         <i class="bi bi-inbox display-4 text-muted"></i>
                         <p class="text-muted mt-2">暂无客户数据</p>
@@ -154,6 +231,35 @@
     opacity: 0.6;
     pointer-events: none;
 }
+
+/* 分页样式 */
+.pagination-info {
+    font-size: 0.9rem;
+}
+
+.pagination .page-link {
+    color: #007bff;
+    border: 1px solid #dee2e6;
+    padding: 0.375rem 0.75rem;
+}
+
+.pagination .page-link:hover {
+    color: #0056b3;
+    background-color: #e9ecef;
+    border-color: #dee2e6;
+}
+
+.pagination .page-item.active .page-link {
+    background-color: #007bff;
+    border-color: #007bff;
+    color: white;
+}
+
+.pagination .page-item.disabled .page-link {
+    color: #6c757d;
+    background-color: #fff;
+    border-color: #dee2e6;
+}
 </style>
 
 <script>
@@ -222,26 +328,24 @@ function saveCustomer(customerName) {
 function filterCustomers() {
     const companyFilter = document.getElementById('companyFilter').checked;
     const personalFilter = document.getElementById('personalFilter').checked;
-    const rows = document.querySelectorAll('#customerTable tbody tr');
     
-    rows.forEach(row => {
-        const customerTypeSelect = row.querySelector('.customer-type-select');
-        if (customerTypeSelect) {
-            const customerType = customerTypeSelect.value;
-            let shouldShow = false;
-            
-            if (customerType === '公司' && companyFilter) {
-                shouldShow = true;
-            } else if (customerType === '个人' && personalFilter) {
-                shouldShow = true;
-            } else if (customerType === '未设置') {
-                // 未设置的客户默认显示（可以根据需要调整）
-                shouldShow = companyFilter || personalFilter;
-            }
-            
-            row.style.display = shouldShow ? '' : 'none';
-        }
-    });
+    // 构建新的URL，包含筛选参数并重置到第一页
+    const url = new URL(window.location.href);
+    url.searchParams.set('page', '1'); // 重置到第一页
+    
+    // 设置筛选参数
+    const filterTypes = [];
+    if (companyFilter) filterTypes.push('公司');
+    if (personalFilter) filterTypes.push('个人');
+    
+    if (filterTypes.length > 0) {
+        url.searchParams.set('customer_type', filterTypes.join(','));
+    } else {
+        url.searchParams.delete('customer_type');
+    }
+    
+    // 跳转到新URL
+    window.location.href = url.toString();
 }
 
 // 页面加载完成后初始化

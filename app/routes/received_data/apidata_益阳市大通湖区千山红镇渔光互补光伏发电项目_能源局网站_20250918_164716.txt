@@ -1,0 +1,41 @@
+{
+    "绿证台账": [
+        {
+            "projectName": "益阳市大通湖区千山红镇渔光互补光伏发电项目",
+            "productionYearMonth": "2025-07",
+            "province": "湖南省",
+            "city": "益阳市",
+            "county": "南县",
+            "releaseQuantity": 37850,
+            "ordinaryQuantity": 18336,
+            "greenQuantity": 19514,
+            "traQuantity": 37850,
+            "unTraQuantity": 0,
+            "shelfLoad": 18336,
+            "soldQuantity": 1,
+            "unsoldQuantity": 18335,
+            "unshelfLoad": 0,
+            "year": 2025,
+            "month": 7,
+            "projectCode": "PPC2312430921002P",
+            "gecUniqueCode": null,
+            "issueType": 1,
+            "batchInfo": "2025-8"
+        }
+    ],
+    "交易记录": [
+        {
+            "orderId": "b40a59c7e6e140b9b995a0c6d670700b",
+            "buyerUniqueCode": null,
+            "transactionTime": "2025-09-12 13:40:02",
+            "transactionNum": "1",
+            "projectName": "益阳市大通湖区千山红镇渔光互补光伏发电项目",
+            "productionYear": "2025",
+            "productionMonth": "7",
+            "province": "湖南省",
+            "city": "益阳市",
+            "county": "南县",
+            "transactionType": "挂牌"
+        }
+    ]
+}

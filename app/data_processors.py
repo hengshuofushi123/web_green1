@@ -172,19 +172,21 @@ def process_guangzhou_trades(project):
         return dt_str.split('.')[0].replace('T', ' ')
     
     def normalize_product_date(date_str):
-        """标准化product_date格式为YYYY-MM"""
-        if not date_str or not isinstance(date_str, str):
+        """【已修正】标准化product_date格式为YYYY-MM"""
+        if not date_str or not isinstance(date_str, str) or date_str.count('-') != 1:
             return date_str
         
-        # 如果已经是YYYY-MM格式，直接返回
-        if len(date_str) == 7 and date_str.count('-') == 1:
+        try:
             year, month = date_str.split('-')
-            if len(year) == 4 and len(month) == 2:
-                return date_str
-            elif len(year) == 4 and len(month) == 1:
-                # 将YYYY-M格式转换为YYYY-MM
+            # 确保年份是4位数，月份是1位或2位数
+            if len(year) == 4 and (len(month) == 1 or len(month) == 2):
+                # 对月份使用zfill(2)来补零，'1'会变成'01'，'11'保持不变
                 return f"{year}-{month.zfill(2)}"
+        except ValueError:
+            # 如果分割失败，返回原值
+            return date_str
         
+        # 如果不符合上述格式，返回原值
         return date_str
 
     records_to_insert = []

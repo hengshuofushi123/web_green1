@@ -1,0 +1,63 @@
+{
+    "绿证台账": [
+        {
+            "projectName": "中电智慧喀什地区麦盖提县工业园区低碳转型50万千瓦光伏项目",
+            "productionYearMonth": "2025-07",
+            "province": "新疆维吾尔自治区",
+            "city": "喀什地区",
+            "county": "麦盖提县",
+            "releaseQuantity": 20658,
+            "ordinaryQuantity": 20658,
+            "greenQuantity": 0,
+            "traQuantity": 20658,
+            "unTraQuantity": 0,
+            "shelfLoad": 0,
+            "soldQuantity": 0,
+            "unsoldQuantity": 20658,
+            "unshelfLoad": 20658,
+            "year": 2025,
+            "month": 7,
+            "projectCode": "PPC2309653127002W",
+            "gecUniqueCode": null,
+            "issueType": 1,
+            "batchInfo": "2025-8"
+        },
+        {
+            "projectName": "中电智慧喀什地区麦盖提县工业园区低碳转型50万千瓦光伏项目",
+            "productionYearMonth": "2025-06",
+            "province": "新疆维吾尔自治区",
+            "city": "喀什地区",
+            "county": "麦盖提县",
+            "releaseQuantity": 11095,
+            "ordinaryQuantity": 11095,
+            "greenQuantity": 0,
+            "traQuantity": 11095,
+            "unTraQuantity": 0,
+            "shelfLoad": 11095,
+            "soldQuantity": 11095,
+            "unsoldQuantity": 0,
+            "unshelfLoad": 0,
+            "year": 2025,
+            "month": 6,
+            "projectCode": "PPC2309653127002W",
+            "gecUniqueCode": null,
+            "issueType": 1,
+            "batchInfo": "2025-7"
+        }
+    ],
+    "交易记录": [
+        {
+            "orderId": "1802c59164c64316ac905a3195de2260",
+            "buyerUniqueCode": null,
+            "transactionTime": "2025-09-02 09:48:56",
+            "transactionNum": "11095",
+            "projectName": "中电智慧喀什地区麦盖提县工业园区低碳转型50万千瓦光伏项目",
+            "productionYear": "2025",
+            "productionMonth": "6",
+            "province": "新疆维吾尔自治区",
+            "city": "喀什地区",
+            "county": "麦盖提县",
+            "transactionType": "双边协商"
+        }
+    ]
+}

@@ -1,0 +1,48 @@
+{
+    "绿证台账": [
+        {
+            "projectName": "普安县新店席草冲风光火储一体化农业光伏电站",
+            "productionYearMonth": "2025-07",
+            "province": "贵州省",
+            "city": "黔西南布依族苗族自治州",
+            "county": "普安县",
+            "releaseQuantity": 6756,
+            "ordinaryQuantity": 6756,
+            "greenQuantity": 0,
+            "traQuantity": 6756,
+            "unTraQuantity": 0,
+            "shelfLoad": 0,
+            "soldQuantity": 0,
+            "unsoldQuantity": 6756,
+            "unshelfLoad": 6756,
+            "year": 2025,
+            "month": 7,
+            "projectCode": "PII2306522323001R",
+            "gecUniqueCode": null,
+            "issueType": 1,
+            "batchInfo": "2025-8"
+        },
+        {
+            "projectName": "普安县新店席草冲风光火储一体化农业光伏电站",
+            "productionYearMonth": "2025-06",
+            "province": "贵州省",
+            "city": "黔西南布依族苗族自治州",
+            "county": "普安县",
+            "releaseQuantity": 3620,
+            "ordinaryQuantity": 3620,
+            "greenQuantity": 0,
+            "traQuantity": 3620,
+            "unTraQuantity": 0,
+            "shelfLoad": 0,
+            "soldQuantity": 0,
+            "unsoldQuantity": 3620,
+            "unshelfLoad": 3620,
+            "year": 2025,
+            "month": 6,
+            "projectCode": "PII2306522323001R",
+            "gecUniqueCode": null,
+            "issueType": 1,
+            "batchInfo": "2025-7"
+        }
+    ]
+}

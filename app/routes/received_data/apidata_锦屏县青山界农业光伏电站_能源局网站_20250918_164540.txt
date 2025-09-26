@@ -1,0 +1,26 @@
+{
+    "绿证台账": [
+        {
+            "projectName": "锦屏县青山界农业光伏电站",
+            "productionYearMonth": "2025-07",
+            "province": "贵州省",
+            "city": "黔东南苗族侗族自治州",
+            "county": "锦屏县",
+            "releaseQuantity": 15051,
+            "ordinaryQuantity": 2243,
+            "greenQuantity": 12808,
+            "traQuantity": 15051,
+            "unTraQuantity": 0,
+            "shelfLoad": 0,
+            "soldQuantity": 0,
+            "unsoldQuantity": 2243,
+            "unshelfLoad": 2243,
+            "year": 2025,
+            "month": 7,
+            "projectCode": "PPC2204522628002K",
+            "gecUniqueCode": null,
+            "issueType": 1,
+            "batchInfo": "2025-8"
+        }
+    ]
+}

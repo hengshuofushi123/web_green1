@@ -20,6 +20,32 @@
   #filterForm .field select { width: 100%; }
   /* 让按钮组不撑开宽度 */
   #filterForm .actions { flex: 0 0 auto; }
+  
+  /* 排序指示器样式 */
+  .sort-indicator {
+    font-size: 0.8em;
+    color: #ccc;
+    margin-right: 5px;
+  }
+  
+  .sortable:hover .sort-indicator {
+    color: #007bff;
+  }
+  
+  .sortable.sort-asc .sort-indicator::after {
+    content: '▲';
+    color: #007bff;
+  }
+  
+  .sortable.sort-desc .sort-indicator::after {
+    content: '▼';
+    color: #007bff;
+  }
+  
+  .sortable:not(.sort-asc):not(.sort-desc) .sort-indicator::after {
+    content: '▲▼';
+    color: #ccc;
+  }
 </style>
 {% endblock %}
 {% block content %}
@@ -121,28 +147,36 @@
           <table class="table table-sm table-striped">
             <thead>
               <tr>
-                <th>{{ dimension }}</th>
-                <th>普通绿证</th>
-                <th>售出量<br>(核发平台)</th>
-                <th>售出量<br>(交易平台)</th>
-                <th>售出比例<br>(划转口径)</th>
-                <th>售出比例<br>(交易口径)</th>
-                <th>平均成交价</th>
+                <th class="sortable" style="text-align: left; cursor: pointer; user-select: none;" onclick="sortTable(0)"><span class="sort-indicator" id="sort-0"></span>{{ dimension }}</th>
+                                    <th class="sortable" style="text-align: right; cursor: pointer; user-select: none;" onclick="sortTable(1)"><span class="sort-indicator" id="sort-1"></span>装机容量<br>(万千瓦)</th>
+                                    <th class="sortable" style="text-align: right; cursor: pointer; user-select: none;" onclick="sortTable(2)"><span class="sort-indicator" id="sort-2"></span>普通绿证<br>（张）</th>
+                                    <th class="sortable" style="text-align: right; cursor: pointer; user-select: none;" onclick="sortTable(3)"><span class="sort-indicator" id="sort-3"></span>售出量<br>(核发平台)</th>
+                                    <th class="sortable" style="text-align: right; cursor: pointer; user-select: none;" onclick="sortTable(4)"><span class="sort-indicator" id="sort-4"></span>售出量<br>(交易平台)</th>
+                                    <th class="sortable" style="text-align: right; cursor: pointer; user-select: none;" onclick="sortTable(5)"><span class="sort-indicator" id="sort-5"></span>售出比例<br>(划转口径)</th>
+                                    <th class="sortable" style="text-align: right; cursor: pointer; user-select: none;" onclick="sortTable(6)"><span class="sort-indicator" id="sort-6"></span>售出比例<br>(交易口径)</th>
+                                    <th class="sortable" style="text-align: right; cursor: pointer; user-select: none;" onclick="sortTable(7)"><span class="sort-indicator" id="sort-7"></span>成交均价<br>（元/张）</th>
+                                    <th class="sortable" style="text-align: right; cursor: pointer; user-select: none;" onclick="sortTable(8)"><span class="sort-indicator" id="sort-8"></span>总收入<br>(万元)</th>
+                                    <th class="sortable" style="text-align: right; cursor: pointer; user-select: none;" onclick="sortTable(9)"><span class="sort-indicator" id="sort-9"></span>度电增收<br>(元/MWh)</th>
+                                    <th class="sortable" style="text-align: right; cursor: pointer; user-select: none;" onclick="sortTable(10)"><span class="sort-indicator" id="sort-10"></span>单位千瓦收入<br>(元/kW)</th>
               </tr>
             </thead>
             <tbody>
               {% for row in summary_data %}
               <tr{% if row.dimension_value == '汇总' %} class="table-secondary fw-bold"{% endif %}>
-                <td>{{ row.dimension_value }}</td>
-                <td>{{ row.ordinary_total }}</td>
-                <td>{{ row.issued_platform_sold }}</td>
-                <td>{{ row.trading_platform_sold }}</td>
-                <td>{{ row.issued_ratio }}%</td>
-                <td>{{ row.trading_ratio }}%</td>
-                <td>{{ row.avg_price }}</td>
-              </tr>
+                                    <td style="text-align: left;">{{ row.dimension_value }}</td>
+                                    <td style="text-align: right;">{{ row.total_capacity_display }}</td>
+                                    <td style="text-align: right;">{{ row.ordinary_total }}</td>
+                                    <td style="text-align: right;">{{ row.issued_platform_sold }}</td>
+                                    <td style="text-align: right;">{{ row.trading_platform_sold }}</td>
+                                    <td style="text-align: right;">{{ row.issued_ratio }}%</td>
+                                    <td style="text-align: right;">{{ row.trading_ratio }}%</td>
+                                    <td style="text-align: right;">{{ row.avg_price_display }}</td>
+                                    <td style="text-align: right;">{{ row.total_income_display }}</td>
+                                    <td style="text-align: right;">{{ row.per_mwh_income_display }}</td>
+                                    <td style="text-align: right;">{{ row.unit_kw_income_display }}</td>
+                                </tr>
               {% else %}
-              <tr><td colspan="7" class="text-center text-muted">请选择维度与时间范围进行查询</td></tr>
+              <tr><td colspan="11" class="text-center text-muted">请选择维度与时间范围进行查询</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -361,6 +395,104 @@
         }
       }
     });
+  }
+
+  // 表格排序功能
+  let sortStates = {}; // 存储每列的排序状态: 'none'=无排序, 'asc'=升序, 'desc'=降序
+  
+  function sortTable(columnIndex) {
+    const table = document.querySelector('.table tbody');
+    const rows = Array.from(table.querySelectorAll('tr'));
+    
+    // 分离汇总行和数据行
+    const summaryRow = rows.find(row => row.querySelector('td').textContent.trim() === '汇总');
+    const dataRows = rows.filter(row => row.querySelector('td').textContent.trim() !== '汇总');
+    
+    if (dataRows.length === 0) return;
+    
+    // 获取当前排序状态
+    const currentState = sortStates[columnIndex] || 'none';
+    let newState;
+    
+    // 切换排序状态：none -> asc -> desc -> none
+    if (currentState === 'none') {
+      newState = 'asc';
+    } else if (currentState === 'asc') {
+      newState = 'desc';
+    } else {
+      newState = 'none';
+    }
+    
+    // 重置所有列的排序状态和CSS类
+    for (let i = 0; i < 10; i++) {
+      sortStates[i] = 'none';
+      const th = document.querySelector(`th[onclick="sortTable(${i})"]`);
+      if (th) {
+        th.classList.remove('sort-asc', 'sort-desc');
+      }
+    }
+    
+    // 设置当前列的排序状态
+    sortStates[columnIndex] = newState;
+    const currentTh = document.querySelector(`th[onclick="sortTable(${columnIndex})"]`);
+    
+    if (newState === 'none') {
+      // 恢复原始顺序
+      location.reload();
+      return;
+    }
+    
+    // 更新CSS类以显示排序状态
+    if (currentTh) {
+      if (newState === 'asc') {
+        currentTh.classList.add('sort-asc');
+      } else if (newState === 'desc') {
+        currentTh.classList.add('sort-desc');
+      }
+    }
+    
+    // 排序数据行
+    dataRows.sort((a, b) => {
+      const aValue = getCellValue(a, columnIndex);
+      const bValue = getCellValue(b, columnIndex);
+      
+      // 尝试转换为数字
+      const aNum = parseFloat(aValue);
+      const bNum = parseFloat(bValue);
+      
+      let comparison;
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+        comparison = aNum - bNum;
+      } else {
+        comparison = aValue.localeCompare(bValue, 'zh-CN');
+      }
+      
+      return newState === 'asc' ? comparison : -comparison;
+    });
+    
+    // 重新插入排序后的行
+    table.innerHTML = '';
+    if (summaryRow) {
+      table.appendChild(summaryRow); // 汇总行始终在顶部
+    }
+    dataRows.forEach(row => table.appendChild(row));
+  }
+  
+  function getCellValue(row, columnIndex) {
+    const cell = row.querySelectorAll('td')[columnIndex];
+    let value = cell.textContent.trim();
+    
+    // 移除百分号和其他符号
+    value = value.replace('%', '').replace(',', '');
+    
+    return value;
+  }
+  
+  // 获取用于排序的原始数值
+  function getSortValue(row, columnIndex) {
+    const rowData = row.getAttribute('data-row-index');
+    // 由于我们无法直接访问原始数据，使用显示值进行排序
+    return getCellValue(row, columnIndex);
   }
 </script>
 {% endblock %}
