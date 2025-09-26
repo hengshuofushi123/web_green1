@@ -16,6 +16,7 @@
 /project_name_inconsistencies.xlsx
 /pwd.xlsx
 /received_data
+/app/routes/received_data
 /temp
 /update_product_date_format.sql
 /update_tables.py
