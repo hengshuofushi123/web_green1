@@ -5,165 +5,159 @@
   <div class="card mb-3" style="position: relative; z-index: 10;">
     <div class="card-body">
       <form id="filterForm" class="row g-2 align-items-end">
-        <!-- 基本筛选条件 -->
         <div class="col-auto mb-2">
-          <label class="form-label">二级单位</label>
-          <select class="form-select" name="secondary_unit" id="secondary_unit" style="width: 250px;">
-            <option value="--所有--">--所有--</option>
-            {% for unit in secondary_units %}
-            <option value="{{ unit }}">{{ unit }}</option>
-            {% endfor %}
-          </select>
+          <label class="form-label" for="secondary_unit">二级单位</label>
+          <div>
+            <select class="selectpicker" name="secondary_unit" id="secondary_unit" multiple data-live-search="true"
+              data-width="250px" title="--所有--" data-actions-box="true">
+              {% for unit in secondary_units %}
+              <option value="{{ unit }}">{{ unit }}</option>
+              {% endfor %}
+            </select>
+          </div>
         </div>
         <div class="col-auto mb-2">
-          <label class="form-label">电源品种</label>
-          <select class="form-select" name="power_type" id="power_type" style="width: 250px;">
-            <option value="--所有--">--所有--</option>
-            {% for type in power_types %}
-            <option value="{{ type }}">{{ type }}</option>
-            {% endfor %}
-          </select>
+          <label class="form-label" for="power_type">电源品种</label>
+          <div>
+            <select class="selectpicker" name="power_type" id="power_type" multiple data-live-search="true"
+              data-width="250px" title="--所有--" data-actions-box="true">
+              {% for type in power_types %}
+              <option value="{{ type }}">{{ type }}</option>
+              {% endfor %}
+            </select>
+          </div>
         </div>
         <div class="col-auto mb-2">
-          <label class="form-label">项目性质</label>
-          <select class="form-select" name="project_nature" id="project_nature" style="width: 250px;">
-            <option value="--所有--">--所有--</option>
-            {% for nature in project_natures %}
-            <option value="{{ nature }}">{{ nature }}</option>
-            {% endfor %}
-          </select>
+          <label class="form-label" for="project_nature">项目性质</label>
+          <div>
+            <select class="selectpicker" name="project_nature" id="project_nature" multiple data-live-search="true"
+              data-width="250px" title="--所有--" data-actions-box="true">
+              {% for nature in project_natures %}
+              <option value="{{ nature }}">{{ nature }}</option>
+              {% endfor %}
+            </select>
+          </div>
         </div>
-        
-        <!-- 高级筛选按钮 -->
+
         <div class="col-auto mb-2">
-          <button type="button" class="btn btn-link" data-bs-toggle="collapse" data-bs-target="#advancedFilters">高级筛选</button>
+          <button type="button" class="btn btn-link" data-bs-toggle="collapse"
+            data-bs-target="#advancedFilters">高级筛选</button>
         </div>
-        
-        <!-- 高级筛选区域 -->
+
         <div class="collapse" id="advancedFilters">
           <div class="row">
             <div class="col-auto mb-2">
-              <label class="form-label">所在省份</label>
-              <select class="form-select" name="province" id="province" style="width: 250px;">
-                <option value="--所有--">--所有--</option>
-                {% for province in provinces %}
-                <option value="{{ province }}">{{ province }}</option>
-                {% endfor %}
-              </select>
+              <label class="form-label" for="province">所在省份</label>
+              <div>
+                <select class="selectpicker" name="province" id="province" multiple data-live-search="true"
+                  data-width="250px" title="--所有--" data-actions-box="true">
+                  {% for province in provinces %}
+                  <option value="{{ province }}">{{ province }}</option>
+                  {% endfor %}
+                </select>
+              </div>
             </div>
             <div class="col-auto mb-2">
-              <label class="form-label">所在区域</label>
-              <select class="form-select" name="region" id="region" style="width: 250px;">
-                <option value="--所有--">--所有--</option>
-                {% for region in regions %}
-                <option value="{{ region }}">{{ region }}</option>
-                {% endfor %}
-              </select>
+              <label class="form-label" for="region">所在区域</label>
+              <div>
+                <select class="selectpicker" name="region" id="region" multiple data-live-search="true"
+                  data-width="250px" title="--所有--" data-actions-box="true">
+                  {% for region in regions %}
+                  <option value="{{ region }}">{{ region }}</option>
+                  {% endfor %}
+                </select>
+              </div>
             </div>
             <div class="col-auto mb-2">
-              <label class="form-label">项目投资口径</label>
-              <select class="form-select" name="investment_scope" id="investment_scope" style="width: 250px;">
-                <option value="--所有--">--所有--</option>
-                {% for scope in investment_scopes %}
-                <option value="{{ scope }}">{{ scope }}</option>
-                {% endfor %}
-              </select>
+              <label class="form-label" for="investment_scope">项目投资口径</label>
+              <div>
+                <select class="selectpicker" name="investment_scope" id="investment_scope" multiple
+                  data-live-search="true" data-width="250px" title="--所有--" data-actions-box="true">
+                  {% for scope in investment_scopes %}
+                  <option value="{{ scope }}">{{ scope }}</option>
+                  {% endfor %}
+                </select>
+              </div>
             </div>
             <div class="col-auto mb-2">
-              <label class="form-label">是否特高压配套电源</label>
-              <select class="form-select" name="is_uhv_support" id="is_uhv_support" style="width: 250px;">
-                <option value="--所有--">--所有--</option>
-                <option value="1">是</option>
-                <option value="0">否</option>
-              </select>
+              <label class="form-label" for="is_uhv_support">是否特高压配套电源</label>
+              <div>
+                <select class="selectpicker" name="is_uhv_support" id="is_uhv_support" multiple data-width="250px"
+                  title="--所有--">
+                  <option value="1">是</option>
+                  <option value="0">否</option>
+                </select>
+              </div>
             </div>
             <div class="col-auto mb-2">
-              <label class="form-label">是否含补贴</label>
-              <select class="form-select" name="has_subsidy" id="has_subsidy" style="width: 250px;">
-                <option value="--所有--">--所有--</option>
-                <option value="1">是</option>
-                <option value="0">否</option>
-              </select>
+              <label class="form-label" for="has_subsidy">是否含补贴</label>
+              <div>
+                <select class="selectpicker" name="has_subsidy" id="has_subsidy" multiple data-width="250px"
+                  title="--所有--">
+                  <option value="1">是</option>
+                  <option value="0">否</option>
+                </select>
+              </div>
             </div>
-            
-            <!-- 电量生产时间选择器 -->
+
             <div class="col-sm-3 mb-2">
               <label class="form-label">电量生产时间</label>
               <div class="input-group">
-                <input type="month" class="form-control" id="production_start_month" name="production_start_month" placeholder="开始月份">
+                <input type="month" class="form-control" id="production_start_month" name="production_start_month"
+                  placeholder="开始月份">
                 <span class="input-group-text">至</span>
-                <input type="month" class="form-control" id="production_end_month" name="production_end_month" placeholder="结束月份">
+                <input type="month" class="form-control" id="production_end_month" name="production_end_month"
+                  placeholder="结束月份">
               </div>
             </div>
-            
-            <!-- 交易时间选择器 -->
+
             <div class="col-sm-3 mb-2">
               <label class="form-label">交易时间</label>
               <div class="input-group">
-                <input type="date" class="form-control" id="transaction_start_date" name="transaction_start_date" placeholder="开始日期">
+                <input type="date" class="form-control" id="transaction_start_date" name="transaction_start_date"
+                  placeholder="开始日期">
                 <span class="input-group-text">至</span>
-                <input type="date" class="form-control" id="transaction_end_date" name="transaction_end_date" placeholder="结束日期">
+                <input type="date" class="form-control" id="transaction_end_date" name="transaction_end_date"
+                  placeholder="结束日期">
               </div>
             </div>
           </div>
         </div>
         <div class="row align-items-end mb-2">
           <div class="col-md-6">
-            <label class="form-label">项目列表 (共{{ projects|length }}个项目)</label>
-            <div class="dropdown">
-              <button class="btn btn-outline-secondary dropdown-toggle w-100 text-start" type="button" id="projectsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                <span id="selectedProjectsText">选择项目...</span>
-              </button>
-              <div class="dropdown-menu w-100" style="max-height: 300px; overflow-y: auto; position: absolute; z-index: 1100;">
-                <div class="px-3 py-2">
-                  <input type="text" class="form-control form-control-sm" id="projectSearch" placeholder="搜索项目...">
-                </div>
-                <div class="px-3 py-1">
-                  <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="selectAllProjects">
-                    <label class="form-check-label" for="selectAllProjects">全选</label>
-                  </div>
-                </div>
-                <div id="projectsList">
-                  {% if projects %}
-                    {% for project in projects %}
-                    <div class="dropdown-item-text project-item">
-                      <div class="form-check">
-                        <input class="form-check-input project-checkbox" type="checkbox" value="{{ project.id }}" id="project_{{ project.id }}">
-                        <label class="form-check-label" for="project_{{ project.id }}">{{ project.project_name }}</label>
-                      </div>
-                    </div>
-                    {% endfor %}
-                  {% else %}
-                    <div class="dropdown-item-text text-muted">没有项目数据</div>
-                  {% endif %}
-                </div>
-              </div>
+            <label class="form-label" for="projects">项目列表 (共<span id="projectCount">{{ projects|length
+                }}</span>个项目)</label>
+            <div>
+              <select class="selectpicker" name="projects" id="projects" multiple data-live-search="true"
+                data-width="100%" data-actions-box="true" data-selected-text-format="count > 3" title="--所有项目--">
+                {% if projects %}
+                {% for project in projects %}
+                <option value="{{ project.id }}">{{ project.project_name }}</option>
+                {% endfor %}
+                {% endif %}
+              </select>
             </div>
-            <input type="hidden" name="projects" id="projects">
           </div>
           <div class="col-md-6 d-flex justify-content-start align-items-end">
             <div class="form-group">
               <button type="button" id="applyFilter" class="btn btn-primary">应用筛选</button>
               <button type="reset" class="btn btn-outline-secondary ms-2">重置</button>
             </div>
-            <!-- START: Checkboxes for column visibility -->
             <div class="form-group ms-4 d-flex align-items-center">
-                <label class="form-label mb-0 me-2">显示列:</label>
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="toggleQty" value="qty" checked>
-                    <label class="form-check-label" for="toggleQty">数量</label>
-                </div>
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="toggleAmt" value="amt">
-                    <label class="form-check-label" for="toggleAmt">金额</label>
-                </div>
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="toggleAvg" value="avg" checked>
-                    <label class="form-check-label" for="toggleAvg">均价</label>
-                </div>
+              <label class="form-label mb-0 me-2">显示列:</label>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="toggleQty" value="qty" checked>
+                <label class="form-check-label" for="toggleQty">数量</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="toggleAmt" value="amt">
+                <label class="form-check-label" for="toggleAmt">金额</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="toggleAvg" value="avg" checked>
+                <label class="form-check-label" for="toggleAvg">均价</label>
+              </div>
             </div>
-            <!-- END: Checkboxes for column visibility -->
           </div>
         </div>
       </form>
@@ -176,24 +170,28 @@
     <div class="card-header">
       <ul class="nav nav-tabs card-header-tabs" id="analysisTab" role="tablist">
         <li class="nav-item" role="presentation">
-          <button class="nav-link active" id="production-tab" data-bs-toggle="tab" data-bs-target="#production-tab-pane" type="button" role="tab" aria-controls="production-tab-pane" aria-selected="true">按生产月汇总</button>
-          </li>
-          <li class="nav-item" role="presentation">
-            <button class="nav-link" id="transaction-tab" data-bs-toggle="tab" data-bs-target="#transaction-tab-pane" type="button" role="tab" aria-controls="transaction-tab-pane" aria-selected="false">按交易月汇总</button>
+          <button class="nav-link active" id="production-tab" data-bs-toggle="tab" data-bs-target="#production-tab-pane"
+            type="button" role="tab" aria-controls="production-tab-pane" aria-selected="true">按生产月汇总</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="transaction-tab" data-bs-toggle="tab" data-bs-target="#transaction-tab-pane"
+            type="button" role="tab" aria-controls="transaction-tab-pane" aria-selected="false">按交易月汇总</button>
         </li>
       </ul>
     </div>
     <div class="card-body" style="flex: 1; overflow: hidden; padding: 0;">
-      <div id="loading" class="text-center py-5" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10;">
+      <div id="loading" class="text-center py-5"
+        style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10;">
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">加载中...</span>
         </div>
         <p class="mt-2">数据加载中，请稍候...</p>
       </div>
-      
+
       <div class="tab-content" id="analysisTabContent" style="height: 100%;">
         <!-- 交易结果分析（按电量生产年月）Tab页 -->
-        <div class="tab-pane fade show active" id="production-tab-pane" role="tabpanel" aria-labelledby="production-tab" tabindex="0" style="height: 100%;">
+        <div class="tab-pane fade show active" id="production-tab-pane" role="tabpanel" aria-labelledby="production-tab"
+          tabindex="0" style="height: 100%;">
 
           <div class="table-container" style="height: calc(100% - 60px); overflow: auto;">
             <table id="resultTable" class="table table-sm table-striped table-hover table-bordered mb-0">
@@ -243,9 +241,10 @@
             </table>
           </div>
         </div>
-        
+
         <!-- 按交易时间汇总 Tab页 -->
-        <div class="tab-pane fade" id="transaction-tab-pane" role="tabpanel" aria-labelledby="transaction-tab" tabindex="0" style="height: 100%;">
+        <div class="tab-pane fade" id="transaction-tab-pane" role="tabpanel" aria-labelledby="transaction-tab"
+          tabindex="0" style="height: 100%;">
 
           <div class="table-container" style="height: calc(100% - 60px); overflow: auto;">
             <table id="transactionTable" class="table table-sm table-striped table-hover table-bordered mb-0">
@@ -295,106 +294,126 @@
 {% endblock %}
 
 {% block extra_css %}
+<!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.14.0-beta2/css/bootstrap-select.min.css"> -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-select.min.css') }}">
 <style>
-.project-item {
+  .project-item {
     padding: 0.25rem 0;
-}
-.project-item .form-check {
+  }
+
+  .project-item .form-check {
     margin-bottom: 0;
-}
-.dropdown-menu {
+  }
+
+  .dropdown-menu {
     padding: 0;
-}
-.dropdown-item-text {
+  }
+
+  .dropdown-item-text {
     white-space: normal;
-}
+  }
 
-/* 表格样式 */
-#resultTable {
-    font-size: 0.875rem; /* 减小字体大小，相当于减小1号 */
-}
-#resultTable th {
+  /* 表格样式 */
+  #resultTable {
+    font-size: 0.875rem;
+    /* 减小字体大小，相当于减小1号 */
+  }
+
+  #resultTable th {
     text-align: center;
     vertical-align: middle;
-}
-#resultTable td {
-    text-align: right;
-}
-#resultTable td:first-child {
-    text-align: center;
-}
+  }
 
-/* 按交易月汇总表样式 */
-#transactionTable {
-    font-size: 0.875rem; /* 减小字体大小，相当于减小1号 */
-}
-#transactionTable th {
+  #resultTable td {
+    text-align: right;
+  }
+
+  #resultTable td:first-child {
+    text-align: center;
+  }
+
+  /* 按交易月汇总表样式 */
+  #transactionTable {
+    font-size: 0.875rem;
+    /* 减小字体大小，相当于减小1号 */
+  }
+
+  #transactionTable th {
     text-align: center;
     vertical-align: middle;
-}
-#transactionTable td {
-    text-align: right;
-}
-#transactionTable td:first-child {
-    text-align: center;
-}
+  }
 
-/* 表头冻结样式 */
-.sticky-header {
+  #transactionTable td {
+    text-align: right;
+  }
+
+  #transactionTable td:first-child {
+    text-align: center;
+  }
+
+  /* 表头冻结样式 */
+  .sticky-header {
     position: sticky;
     top: 0;
     background-color: #f8f9fa !important;
     height: 40px;
     border-bottom: none !important;
-}
-.sticky-header-second {
+  }
+
+  .sticky-header-second {
     position: sticky;
-    top: 40px; /* 第二行粘在第一行下方 */
+    top: 40px;
+    /* 第二行粘在第一行下方 */
     background-color: #f8f9fa !important;
     height: 40px;
     border-top: none !important;
     border-bottom: 2px solid #dee2e6 !important;
-}
+  }
 
-/* 表格容器样式 */
-.table-container {
+  /* 表格容器样式 */
+  .table-container {
     border: 1px solid #dee2e6;
     border-radius: 0.375rem;
-}
+  }
 
-/* 确保表格在容器中正确显示 */
-#resultTable {
+  /* 确保表格在容器中正确显示 */
+  #resultTable {
     margin-bottom: 0 !important;
-}
+  }
 
-/* 加载状态样式 */
-#loading {
+  /* 加载状态样式 */
+  #loading {
     background-color: rgba(255, 255, 255, 0.9);
     border-radius: 0.375rem;
-}
+  }
 </style>
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/bootstrap-select.min.js') }}"></script>
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.14.0-beta2/js/bootstrap-select.min.js"></script> -->
+<script src="{{ url_for('static', filename='js/defaults-zh_CN.js') }}"></script>
 <script>
 $(document).ready(function() {
     console.log('页面加载完成，开始初始化');
-    
-    // 初始化项目选择器
-    initProjectSelector();
 
-    // START: Column visibility toggle logic
+    // 初始化所有多选下拉框插件
+    $('.selectpicker').selectpicker();
+
+    // ---------------------------------------------------------------- //
+    // 完整的函数定义区域
+    // ---------------------------------------------------------------- //
+
+    // 函数1：控制表格列（数量/金额/均价）的显示与隐藏
     function updateColumnVisibility() {
         const showQty = $('#toggleQty').is(':checked');
         const showAmt = $('#toggleAmt').is(':checked');
         const showAvg = $('#toggleAvg').is(':checked');
 
-        // Toggle individual columns
         $('.col-qty').toggle(showQty);
         $('.col-amt').toggle(showAmt);
         $('.col-avg').toggle(showAvg);
 
-        // Update colspan for parent headers and visibility
         $('.col-parent-group').each(function() {
             let colspan = 0;
             if (showQty) colspan++;
@@ -410,588 +429,197 @@ $(document).ready(function() {
         });
     }
 
-    // Attach event listeners to checkboxes
-    $('#toggleQty, #toggleAmt, #toggleAvg').on('change', function() {
-        updateColumnVisibility();
-    });
+    // 函数2：根据筛选条件，通过AJAX更新项目列表
+    function updateProjectsList() {
+        return $.ajax({
+            url: '/dashboard/get_filtered_projects',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                secondary_unit: $('#secondary_unit').val(),
+                province: $('#province').val(),
+                region: $('#region').val(),
+                power_type: $('#power_type').val(),
+                investment_scope: $('#investment_scope').val(),
+                project_nature: $('#project_nature').val(),
+                is_uhv_support: $('#is_uhv_support').val(),
+                has_subsidy: $('#has_subsidy').val()
+            }),
+            success: function(response) {
+                const projectsSelect = $('#projects');
+                projectsSelect.empty();
 
-    // Initial call to set the correct state on page load
-    updateColumnVisibility();
-    // END: Column visibility toggle logic
-
-    
-    function initProjectSelector() {
-        // 初始化时全选所有项目
-        $('.project-checkbox').prop('checked', true);
-        updateSelectedProjects();
-        updateSelectAllState();
-        
-        // 搜索功能
-        $('#projectSearch').on('input', function() {
-            const searchTerm = $(this).val().toLowerCase();
-            $('.project-item').each(function() {
-                const projectName = $(this).find('label').text().toLowerCase();
-                if (projectName.includes(searchTerm)) {
-                    $(this).show();
+                if (response.projects && response.projects.length > 0) {
+                    response.projects.forEach(function(project) {
+                        projectsSelect.append(new Option(project.project_name, project.id));
+                    });
+                    $('#projectCount').text(response.projects.length);
                 } else {
-                    $(this).hide();
+                    $('#projectCount').text(0);
                 }
-            });
-        });
-        
-        // 全选功能
-        $('#selectAllProjects').change(function() {
-            const isChecked = $(this).is(':checked');
-            $('.project-checkbox:visible').prop('checked', isChecked);
-            updateSelectedProjects();
-        });
-        
-        // 项目复选框变化
-        $('.project-checkbox').change(function() {
-            updateSelectedProjects();
-            updateSelectAllState();
-        });
-        
-        // 防止下拉菜单关闭
-        $('.dropdown-menu').on('click', function(e) {
-            e.stopPropagation();
+                projectsSelect.selectpicker('refresh');
+            },
+            error: function(xhr, status, error) {
+                console.error('AJAX请求项目列表失败:', status, error);
+            }
         });
     }
-    
-    // Tab页切换事件
-    $('.nav-link').on('click', function() {
-        $('.nav-link').removeClass('active');
-        $(this).addClass('active');
-        $('.tab-pane').removeClass('show active');
-        const target = $(this).data('bs-target');
-        $(target).addClass('show active');
-        // 移除切换tab时的数据重新计算，改为在应用筛选时同时计算两个表
-    });
-    
-    // 获取按交易时间汇总数据函数
+
+    // 函数3：获取“按生产月汇总”的分析数据
+    function fetchAnalysisData() {
+        const filters = {
+            secondary_unit: $('#secondary_unit').val(),
+            province: $('#province').val(),
+            region: $('#region').val(),
+            power_type: $('#power_type').val(),
+            investment_scope: $('#investment_scope').val(),
+            project_nature: $('#project_nature').val(),
+            is_uhv_support: $('#is_uhv_support').val(),
+            has_subsidy: $('#has_subsidy').val(),
+            projects: $('#projects').val(), // 直接获取选中项目的ID数组
+            production_start_month: $('#production_start_month').val(),
+            production_end_month: $('#production_end_month').val(),
+            transaction_start_date: $('#transaction_start_date').val(),
+            transaction_end_date: $('#transaction_end_date').val()
+        };
+
+        $('#loading').show();
+        $('#resultBody').empty().html('<tr><td colspan="26" class="text-center text-muted">正在加载数据...</td></tr>');
+        
+        $.ajax({
+            url: '{{ url_for("dashboard.get_analysis_data") }}',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(filters),
+            success: function(response) {
+                $('#resultBody').empty();
+                if (response && response.length > 0) {
+                    let summaryData = { ordinary_green: 0, green_green: 0, issued_platform_sold: 0, unilateral_qty: 0, unilateral_amt: 0, online_qty: 0, online_amt: 0, offline_qty: 0, offline_amt: 0, beijing_qty: 0, beijing_amt: 0, guangzhou_qty: 0, guangzhou_amt: 0 };
+                    const summaryRow = `<tr class="table-secondary fw-bold"><td>汇总</td><td id="sum_total_issued">0</td><td id="sum_ordinary_green">0</td><td id="sum_green_green">0</td><td id="sum_issued_platform_sold">0</td><td id="sum_inventory">0</td><td id="sum_unilateral_qty" class="col-qty">0</td><td id="sum_unilateral_amt" class="col-amt">0</td><td id="sum_unilateral_avg" class="col-avg">0</td><td id="sum_online_qty" class="col-qty">0</td><td id="sum_online_amt" class="col-amt">0</td><td id="sum_online_avg" class="col-avg">0</td><td id="sum_offline_qty" class="col-qty">0</td><td id="sum_offline_amt" class="col-amt">0</td><td id="sum_offline_avg" class="col-avg">0</td><td id="sum_beijing_qty" class="col-qty">0</td><td id="sum_beijing_amt" class="col-amt">0</td><td id="sum_beijing_avg" class="col-avg">0</td><td id="sum_guangzhou_qty" class="col-qty">0</td><td id="sum_guangzhou_amt" class="col-amt">0</td><td id="sum_guangzhou_avg" class="col-avg">0</td><td id="sum_total_qty" class="col-qty">0</td><td id="sum_total_amt" class="col-amt">0</td><td id="sum_total_avg" class="col-avg">0</td><td id="sum_issued_ratio">0.0%</td><td id="sum_trading_ratio">0.0%</td></tr>`;
+                    $('#resultBody').append(summaryRow);
+                    response.forEach(function(row) {
+                        const totalQty = (parseFloat(row.unilateral_qty) || 0) + (parseFloat(row.online_qty) || 0) + (parseFloat(row.offline_qty) || 0) + (parseFloat(row.beijing_qty) || 0) + (parseFloat(row.guangzhou_qty) || 0);
+                        const totalAmt = (parseFloat(row.unilateral_amt) || 0) + (parseFloat(row.online_amt) || 0) + (parseFloat(row.offline_amt) || 0) + (parseFloat(row.beijing_amt) || 0) + (parseFloat(row.guangzhou_amt) || 0);
+                        const totalAvg = totalQty > 0 ? (totalAmt / totalQty).toFixed(2) : 0;
+                        const ordinaryGreen = parseFloat(row.ordinary_green) || 0;
+                        const greenGreen = parseFloat(row.green_green) || 0;
+                        const totalIssued = ordinaryGreen + greenGreen;
+                        const inventory = ordinaryGreen - (parseFloat(row.issued_platform_sold) || 0);
+                        const issuedRatio = ordinaryGreen > 0 ? ((parseFloat(row.issued_platform_sold) || 0) / ordinaryGreen * 100).toFixed(1) + '%' : '0.0%';
+                        const tradingRatio = ordinaryGreen > 0 ? (totalQty / ordinaryGreen * 100).toFixed(1) + '%' : '0.0%';
+                        const tr = `<tr><td>${row.production_year_month || ''}</td><td>${Math.round(totalIssued)}</td><td>${row.ordinary_green || 0}</td><td>${row.green_green || 0}</td><td>${row.issued_platform_sold || 0}</td><td>${Math.round(inventory)}</td><td class="col-qty">${row.unilateral_qty || 0}</td><td class="col-amt">${row.unilateral_amt || 0}</td><td class="col-avg">${row.unilateral_avg || 0}</td><td class="col-qty">${row.online_qty || 0}</td><td class="col-amt">${row.online_amt || 0}</td><td class="col-avg">${row.online_avg || 0}</td><td class="col-qty">${row.offline_qty || 0}</td><td class="col-amt">${row.offline_amt || 0}</td><td class="col-avg">${row.offline_avg || 0}</td><td class="col-qty">${row.beijing_qty || 0}</td><td class="col-amt">${row.beijing_amt || 0}</td><td class="col-avg">${row.beijing_avg || 0}</td><td class="col-qty">${row.guangzhou_qty || 0}</td><td class="col-amt">${row.guangzhou_amt || 0}</td><td class="col-avg">${row.guangzhou_avg || 0}</td><td class="col-qty">${Math.round(totalQty)}</td><td class="col-amt">${totalAmt.toFixed(2)}</td><td class="col-avg">${totalAvg}</td><td>${issuedRatio}</td><td>${tradingRatio}</td></tr>`;
+                        $('#resultBody').append(tr);
+                        summaryData.ordinary_green += parseFloat(row.ordinary_green) || 0; summaryData.green_green += parseFloat(row.green_green) || 0; summaryData.issued_platform_sold += parseFloat(row.issued_platform_sold) || 0; summaryData.unilateral_qty += parseFloat(row.unilateral_qty) || 0; summaryData.unilateral_amt += parseFloat(row.unilateral_amt) || 0; summaryData.online_qty += parseFloat(row.online_qty) || 0; summaryData.online_amt += parseFloat(row.online_amt) || 0; summaryData.offline_qty += parseFloat(row.offline_qty) || 0; summaryData.offline_amt += parseFloat(row.offline_amt) || 0; summaryData.beijing_qty += parseFloat(row.beijing_qty) || 0; summaryData.beijing_amt += parseFloat(row.beijing_amt) || 0; summaryData.guangzhou_qty += parseFloat(row.guangzhou_qty) || 0; summaryData.guangzhou_amt += parseFloat(row.guangzhou_amt) || 0;
+                    });
+                    const sumUnilateralAvg = summaryData.unilateral_qty > 0 ? (summaryData.unilateral_amt / summaryData.unilateral_qty).toFixed(2) : 0; const sumOnlineAvg = summaryData.online_qty > 0 ? (summaryData.online_amt / summaryData.online_qty).toFixed(2) : 0; const sumOfflineAvg = summaryData.offline_qty > 0 ? (summaryData.offline_amt / summaryData.offline_qty).toFixed(2) : 0; const sumBeijingAvg = summaryData.beijing_qty > 0 ? (summaryData.beijing_amt / summaryData.beijing_qty).toFixed(2) : 0; const sumGuangzhouAvg = summaryData.guangzhou_qty > 0 ? (summaryData.guangzhou_amt / summaryData.guangzhou_qty).toFixed(2) : 0; const sumTotalQty = summaryData.unilateral_qty + summaryData.online_qty + summaryData.offline_qty + summaryData.beijing_qty + summaryData.guangzhou_qty; const sumTotalAmt = summaryData.unilateral_amt + summaryData.online_amt + summaryData.offline_amt + summaryData.beijing_amt + summaryData.guangzhou_amt; const sumTotalAvg = sumTotalQty > 0 ? (sumTotalAmt / sumTotalQty).toFixed(2) : 0; const sumIssuedRatio = summaryData.ordinary_green > 0 ? ((summaryData.issued_platform_sold / summaryData.ordinary_green) * 100).toFixed(1) + '%' : '0.0%'; const sumTradingRatio = summaryData.ordinary_green > 0 ? ((sumTotalQty / summaryData.ordinary_green) * 100).toFixed(1) + '%' : '0.0%'; const sumTotalIssued = summaryData.ordinary_green + summaryData.green_green; const sumInventory = summaryData.ordinary_green - summaryData.issued_platform_sold;
+                    $('#sum_total_issued').text(Math.round(sumTotalIssued)); $('#sum_ordinary_green').text(Math.round(summaryData.ordinary_green)); $('#sum_green_green').text(Math.round(summaryData.green_green)); $('#sum_issued_platform_sold').text(Math.round(summaryData.issued_platform_sold)); $('#sum_inventory').text(Math.round(sumInventory)); $('#sum_unilateral_qty').text(Math.round(summaryData.unilateral_qty)); $('#sum_unilateral_amt').text(summaryData.unilateral_amt.toFixed(2)); $('#sum_unilateral_avg').text(sumUnilateralAvg); $('#sum_online_qty').text(Math.round(summaryData.online_qty)); $('#sum_online_amt').text(summaryData.online_amt.toFixed(2)); $('#sum_online_avg').text(sumOnlineAvg); $('#sum_offline_qty').text(Math.round(summaryData.offline_qty)); $('#sum_offline_amt').text(summaryData.offline_amt.toFixed(2)); $('#sum_offline_avg').text(sumOfflineAvg); $('#sum_beijing_qty').text(Math.round(summaryData.beijing_qty)); $('#sum_beijing_amt').text(summaryData.beijing_amt.toFixed(2)); $('#sum_beijing_avg').text(sumBeijingAvg); $('#sum_guangzhou_qty').text(Math.round(summaryData.guangzhou_qty)); $('#sum_guangzhou_amt').text(summaryData.guangzhou_amt.toFixed(2)); $('#sum_guangzhou_avg').text(sumGuangzhouAvg); $('#sum_total_qty').text(Math.round(sumTotalQty)); $('#sum_total_amt').text(sumTotalAmt.toFixed(2)); $('#sum_total_avg').text(sumTotalAvg); $('#sum_issued_ratio').text(sumIssuedRatio); $('#sum_trading_ratio').text(sumTradingRatio);
+                } else {
+                    $('#resultBody').append('<tr><td colspan="26" class="text-center text-muted">暂无数据</td></tr>');
+                }
+                updateColumnVisibility();
+                $('#loading').hide();
+            },
+            error: function(error) {
+                console.error('获取分析数据失败:', error);
+                $('#resultBody').append('<tr><td colspan="26" class="text-center text-danger">数据加载失败，请重试</td></tr>');
+                $('#loading').hide();
+            }
+        });
+    }
+
+    // 函数4：获取“按交易月汇总”的分析数据
     function fetchTransactionTimeData() {
-      const projectIds = $('#projects').val().split(',').filter(id => id);
-      const filters = {
-        secondary_unit: $('#secondary_unit').val(),
-        province: $('#province').val(),
-        region: $('#region').val(),
-        power_type: $('#power_type').val(),
-        investment_scope: $('#investment_scope').val(),
-        project_nature: $('#project_nature').val(),
-        is_uhv_support: $('#is_uhv_support').val(),
-        has_subsidy: $('#has_subsidy').val(),
-        projects: projectIds,
-        production_start_month: $('#production_start_month').val(),
-        production_end_month: $('#production_end_month').val(),
-        transaction_start_date: $('#transaction_start_date').val(),
-        transaction_end_date: $('#transaction_end_date').val()
-      };
+        const filters = {
+            secondary_unit: $('#secondary_unit').val(),
+            province: $('#province').val(),
+            region: $('#region').val(),
+            power_type: $('#power_type').val(),
+            investment_scope: $('#investment_scope').val(),
+            project_nature: $('#project_nature').val(),
+            is_uhv_support: $('#is_uhv_support').val(),
+            has_subsidy: $('#has_subsidy').val(),
+            projects: $('#projects').val(), // 直接获取选中项目的ID数组
+            production_start_month: $('#production_start_month').val(),
+            production_end_month: $('#production_end_month').val(),
+            transaction_start_date: $('#transaction_start_date').val(),
+            transaction_end_date: $('#transaction_end_date').val()
+        };
 
-      $('#loading').show();
-      $('#transactionBody').empty();
-      
-      $.ajax({
-        url: '{{ url_for("dashboard.get_transaction_time_data") }}',
-        type: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify(filters),
-        success: function(response) {
-          console.log('获取到交易时间汇总数据:', response);
-          $('#transactionBody').empty();
-          
-          if (response && response.length > 0) {
-            // 创建汇总数据对象
-            let summaryData = {
-              unilateral_qty: 0,
-              unilateral_amt: 0,
-              online_qty: 0,
-              online_amt: 0,
-              offline_qty: 0,
-              offline_amt: 0,
-              beijing_qty: 0,
-              beijing_amt: 0,
-              guangzhou_qty: 0,
-              guangzhou_amt: 0
-            };
-            
-            // 先添加汇总行
-            const summaryRow = `
-              <tr class="table-secondary fw-bold">
-                <td>汇总</td>
-                <td id="t_sum_unilateral_qty" class="col-qty">0</td>
-                <td id="t_sum_unilateral_amt" class="col-amt">0</td>
-                <td id="t_sum_unilateral_avg" class="col-avg">0</td>
-                <td id="t_sum_online_qty" class="col-qty">0</td>
-                <td id="t_sum_online_amt" class="col-amt">0</td>
-                <td id="t_sum_online_avg" class="col-avg">0</td>
-                <td id="t_sum_offline_qty" class="col-qty">0</td>
-                <td id="t_sum_offline_amt" class="col-amt">0</td>
-                <td id="t_sum_offline_avg" class="col-avg">0</td>
-                <td id="t_sum_beijing_qty" class="col-qty">0</td>
-                <td id="t_sum_beijing_amt" class="col-amt">0</td>
-                <td id="t_sum_beijing_avg" class="col-avg">0</td>
-                <td id="t_sum_guangzhou_qty" class="col-qty">0</td>
-                <td id="t_sum_guangzhou_amt" class="col-amt">0</td>
-                <td id="t_sum_guangzhou_avg" class="col-avg">0</td>
-                <td id="t_sum_total_qty" class="col-qty">0</td>
-                <td id="t_sum_total_amt" class="col-amt">0</td>
-                <td id="t_sum_total_avg" class="col-avg">0</td>
-              </tr>
-            `;
-            $('#transactionBody').append(summaryRow);
-            
-            // 添加各月份数据行并累计汇总数据
-            response.forEach(function(row) {
-              // 计算交易平台售出汇总
-              const totalQty = (parseFloat(row.unilateral_qty) || 0) + 
-                              (parseFloat(row.online_qty) || 0) + 
-                              (parseFloat(row.offline_qty) || 0) + 
-                              (parseFloat(row.beijing_qty) || 0) + 
-                              (parseFloat(row.guangzhou_qty) || 0);
-              
-              const totalAmt = (parseFloat(row.unilateral_amt) || 0) + 
-                              (parseFloat(row.online_amt) || 0) + 
-                              (parseFloat(row.offline_amt) || 0) + 
-                              (parseFloat(row.beijing_amt) || 0) + 
-                              (parseFloat(row.guangzhou_amt) || 0);
-              
-              const totalAvg = totalQty > 0 ? (totalAmt / totalQty).toFixed(2) : 0;
-              
-              const tr = `
-                <tr>
-                  <td>${row.transaction_year_month || ''}</td>
-                  <td class="col-qty">${row.unilateral_qty || 0}</td>
-                  <td class="col-amt">${row.unilateral_amt || 0}</td>
-                  <td class="col-avg">${row.unilateral_avg || 0}</td>
-                  <td class="col-qty">${row.online_qty || 0}</td>
-                  <td class="col-amt">${row.online_amt || 0}</td>
-                  <td class="col-avg">${row.online_avg || 0}</td>
-                  <td class="col-qty">${row.offline_qty || 0}</td>
-                  <td class="col-amt">${row.offline_amt || 0}</td>
-                  <td class="col-avg">${row.offline_avg || 0}</td>
-                  <td class="col-qty">${row.beijing_qty || 0}</td>
-                  <td class="col-amt">${row.beijing_amt || 0}</td>
-                  <td class="col-avg">${row.beijing_avg || 0}</td>
-                  <td class="col-qty">${row.guangzhou_qty || 0}</td>
-                  <td class="col-amt">${row.guangzhou_amt || 0}</td>
-                  <td class="col-avg">${row.guangzhou_avg || 0}</td>
-                  <td class="col-qty">${Math.round(totalQty)}</td>
-                  <td class="col-amt">${totalAmt.toFixed(2)}</td>
-                  <td class="col-avg">${totalAvg}</td>
-                </tr>
-              `;
-              $('#transactionBody').append(tr);
-              
-              // 累加汇总数据
-              summaryData.unilateral_qty += parseFloat(row.unilateral_qty) || 0;
-              summaryData.unilateral_amt += parseFloat(row.unilateral_amt) || 0;
-              summaryData.online_qty += parseFloat(row.online_qty) || 0;
-              summaryData.online_amt += parseFloat(row.online_amt) || 0;
-              summaryData.offline_qty += parseFloat(row.offline_qty) || 0;
-              summaryData.offline_amt += parseFloat(row.offline_amt) || 0;
-              summaryData.beijing_qty += parseFloat(row.beijing_qty) || 0;
-              summaryData.beijing_amt += parseFloat(row.beijing_amt) || 0;
-              summaryData.guangzhou_qty += parseFloat(row.guangzhou_qty) || 0;
-              summaryData.guangzhou_amt += parseFloat(row.guangzhou_amt) || 0;
-            });
-            
-            // 计算汇总行的均价
-            const sumUnilateralAvg = summaryData.unilateral_qty > 0 ? (summaryData.unilateral_amt / summaryData.unilateral_qty).toFixed(2) : 0;
-            const sumOnlineAvg = summaryData.online_qty > 0 ? (summaryData.online_amt / summaryData.online_qty).toFixed(2) : 0;
-            const sumOfflineAvg = summaryData.offline_qty > 0 ? (summaryData.offline_amt / summaryData.offline_qty).toFixed(2) : 0;
-            const sumBeijingAvg = summaryData.beijing_qty > 0 ? (summaryData.beijing_amt / summaryData.beijing_qty).toFixed(2) : 0;
-            const sumGuangzhouAvg = summaryData.guangzhou_qty > 0 ? (summaryData.guangzhou_amt / summaryData.guangzhou_qty).toFixed(2) : 0;
-            
-            // 计算交易平台售出汇总
-            const sumTotalQty = summaryData.unilateral_qty + summaryData.online_qty + summaryData.offline_qty + summaryData.beijing_qty + summaryData.guangzhou_qty;
-            const sumTotalAmt = summaryData.unilateral_amt + summaryData.online_amt + summaryData.offline_amt + summaryData.beijing_amt + summaryData.guangzhou_amt;
-            const sumTotalAvg = sumTotalQty > 0 ? (sumTotalAmt / sumTotalQty).toFixed(2) : 0;
-            
-            // 更新汇总行的数据
-            $('#t_sum_unilateral_qty').text(Math.round(summaryData.unilateral_qty));
-            $('#t_sum_unilateral_amt').text(summaryData.unilateral_amt.toFixed(2));
-            $('#t_sum_unilateral_avg').text(sumUnilateralAvg);
-            $('#t_sum_online_qty').text(Math.round(summaryData.online_qty));
-            $('#t_sum_online_amt').text(summaryData.online_amt.toFixed(2));
-            $('#t_sum_online_avg').text(sumOnlineAvg);
-            $('#t_sum_offline_qty').text(Math.round(summaryData.offline_qty));
-            $('#t_sum_offline_amt').text(summaryData.offline_amt.toFixed(2));
-            $('#t_sum_offline_avg').text(sumOfflineAvg);
-            $('#t_sum_beijing_qty').text(Math.round(summaryData.beijing_qty));
-            $('#t_sum_beijing_amt').text(summaryData.beijing_amt.toFixed(2));
-            $('#t_sum_beijing_avg').text(sumBeijingAvg);
-            $('#t_sum_guangzhou_qty').text(Math.round(summaryData.guangzhou_qty));
-            $('#t_sum_guangzhou_amt').text(summaryData.guangzhou_amt.toFixed(2));
-            $('#t_sum_guangzhou_avg').text(sumGuangzhouAvg);
-            $('#t_sum_total_qty').text(Math.round(sumTotalQty));
-            $('#t_sum_total_amt').text(sumTotalAmt.toFixed(2));
-            $('#t_sum_total_avg').text(sumTotalAvg);
-          } else {
-            $('#transactionBody').append('<tr><td colspan="19" class="text-center text-muted">暂无数据</td></tr>');
-          }
-          
-          updateColumnVisibility();
-          $('#loading').hide();
-        },
-        error: function(error) {
-          console.error('获取交易时间汇总数据失败:', error);
-          $('#transactionBody').append('<tr><td colspan="19" class="text-center text-danger">数据加载失败，请重试</td></tr>');
-          $('#loading').hide();
-        }
-      });
-    }
-    
-    function updateSelectedProjects() {
-        const selectedIds = [];
-        const selectedNames = [];
+        $('#loading').show();
+        $('#transactionBody').empty().html('<tr><td colspan="19" class="text-center text-muted">正在加载数据...</td></tr>');
         
-        $('.project-checkbox:checked').each(function() {
-            selectedIds.push($(this).val());
-            selectedNames.push($(this).next('label').text());
+        $.ajax({
+            url: '{{ url_for("dashboard.get_transaction_time_data") }}',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(filters),
+            success: function(response) {
+                $('#transactionBody').empty();
+                if (response && response.length > 0) {
+                    let summaryData = { unilateral_qty: 0, unilateral_amt: 0, online_qty: 0, online_amt: 0, offline_qty: 0, offline_amt: 0, beijing_qty: 0, beijing_amt: 0, guangzhou_qty: 0, guangzhou_amt: 0 };
+                    const summaryRow = `<tr class="table-secondary fw-bold"><td>汇总</td><td id="t_sum_unilateral_qty" class="col-qty">0</td><td id="t_sum_unilateral_amt" class="col-amt">0</td><td id="t_sum_unilateral_avg" class="col-avg">0</td><td id="t_sum_online_qty" class="col-qty">0</td><td id="t_sum_online_amt" class="col-amt">0</td><td id="t_sum_online_avg" class="col-avg">0</td><td id="t_sum_offline_qty" class="col-qty">0</td><td id="t_sum_offline_amt" class="col-amt">0</td><td id="t_sum_offline_avg" class="col-avg">0</td><td id="t_sum_beijing_qty" class="col-qty">0</td><td id="t_sum_beijing_amt" class="col-amt">0</td><td id="t_sum_beijing_avg" class="col-avg">0</td><td id="t_sum_guangzhou_qty" class="col-qty">0</td><td id="t_sum_guangzhou_amt" class="col-amt">0</td><td id="t_sum_guangzhou_avg" class="col-avg">0</td><td id="t_sum_total_qty" class="col-qty">0</td><td id="t_sum_total_amt" class="col-amt">0</td><td id="t_sum_total_avg" class="col-avg">0</td></tr>`;
+                    $('#transactionBody').append(summaryRow);
+                    response.forEach(function(row) {
+                        const totalQty = (parseFloat(row.unilateral_qty) || 0) + (parseFloat(row.online_qty) || 0) + (parseFloat(row.offline_qty) || 0) + (parseFloat(row.beijing_qty) || 0) + (parseFloat(row.guangzhou_qty) || 0);
+                        const totalAmt = (parseFloat(row.unilateral_amt) || 0) + (parseFloat(row.online_amt) || 0) + (parseFloat(row.offline_amt) || 0) + (parseFloat(row.beijing_amt) || 0) + (parseFloat(row.guangzhou_amt) || 0);
+                        const totalAvg = totalQty > 0 ? (totalAmt / totalQty).toFixed(2) : 0;
+                        const tr = `<tr><td>${row.transaction_year_month || ''}</td><td class="col-qty">${row.unilateral_qty || 0}</td><td class="col-amt">${row.unilateral_amt || 0}</td><td class="col-avg">${row.unilateral_avg || 0}</td><td class="col-qty">${row.online_qty || 0}</td><td class="col-amt">${row.online_amt || 0}</td><td class="col-avg">${row.online_avg || 0}</td><td class="col-qty">${row.offline_qty || 0}</td><td class="col-amt">${row.offline_amt || 0}</td><td class="col-avg">${row.offline_avg || 0}</td><td class="col-qty">${row.beijing_qty || 0}</td><td class="col-amt">${row.beijing_amt || 0}</td><td class="col-avg">${row.beijing_avg || 0}</td><td class="col-qty">${row.guangzhou_qty || 0}</td><td class="col-amt">${row.guangzhou_amt || 0}</td><td class="col-avg">${row.guangzhou_avg || 0}</td><td class="col-qty">${Math.round(totalQty)}</td><td class="col-amt">${totalAmt.toFixed(2)}</td><td class="col-avg">${totalAvg}</td></tr>`;
+                        $('#transactionBody').append(tr);
+                        summaryData.unilateral_qty += parseFloat(row.unilateral_qty) || 0; summaryData.unilateral_amt += parseFloat(row.unilateral_amt) || 0; summaryData.online_qty += parseFloat(row.online_qty) || 0; summaryData.online_amt += parseFloat(row.online_amt) || 0; summaryData.offline_qty += parseFloat(row.offline_qty) || 0; summaryData.offline_amt += parseFloat(row.offline_amt) || 0; summaryData.beijing_qty += parseFloat(row.beijing_qty) || 0; summaryData.beijing_amt += parseFloat(row.beijing_amt) || 0; summaryData.guangzhou_qty += parseFloat(row.guangzhou_qty) || 0; summaryData.guangzhou_amt += parseFloat(row.guangzhou_amt) || 0;
+                    });
+                    const sumUnilateralAvg = summaryData.unilateral_qty > 0 ? (summaryData.unilateral_amt / summaryData.unilateral_qty).toFixed(2) : 0; const sumOnlineAvg = summaryData.online_qty > 0 ? (summaryData.online_amt / summaryData.online_qty).toFixed(2) : 0; const sumOfflineAvg = summaryData.offline_qty > 0 ? (summaryData.offline_amt / summaryData.offline_qty).toFixed(2) : 0; const sumBeijingAvg = summaryData.beijing_qty > 0 ? (summaryData.beijing_amt / summaryData.beijing_qty).toFixed(2) : 0; const sumGuangzhouAvg = summaryData.guangzhou_qty > 0 ? (summaryData.guangzhou_amt / summaryData.guangzhou_qty).toFixed(2) : 0; const sumTotalQty = summaryData.unilateral_qty + summaryData.online_qty + summaryData.offline_qty + summaryData.beijing_qty + summaryData.guangzhou_qty; const sumTotalAmt = summaryData.unilateral_amt + summaryData.online_amt + summaryData.offline_amt + summaryData.beijing_amt + summaryData.guangzhou_amt; const sumTotalAvg = sumTotalQty > 0 ? (sumTotalAmt / sumTotalQty).toFixed(2) : 0;
+                    $('#t_sum_unilateral_qty').text(Math.round(summaryData.unilateral_qty)); $('#t_sum_unilateral_amt').text(summaryData.unilateral_amt.toFixed(2)); $('#t_sum_unilateral_avg').text(sumUnilateralAvg); $('#t_sum_online_qty').text(Math.round(summaryData.online_qty)); $('#t_sum_online_amt').text(summaryData.online_amt.toFixed(2)); $('#t_sum_online_avg').text(sumOnlineAvg); $('#t_sum_offline_qty').text(Math.round(summaryData.offline_qty)); $('#t_sum_offline_amt').text(summaryData.offline_amt.toFixed(2)); $('#t_sum_offline_avg').text(sumOfflineAvg); $('#t_sum_beijing_qty').text(Math.round(summaryData.beijing_qty)); $('#t_sum_beijing_amt').text(summaryData.beijing_amt.toFixed(2)); $('#t_sum_beijing_avg').text(sumBeijingAvg); $('#t_sum_guangzhou_qty').text(Math.round(summaryData.guangzhou_qty)); $('#t_sum_guangzhou_amt').text(summaryData.guangzhou_amt.toFixed(2)); $('#t_sum_guangzhou_avg').text(sumGuangzhouAvg); $('#t_sum_total_qty').text(Math.round(sumTotalQty)); $('#t_sum_total_amt').text(sumTotalAmt.toFixed(2)); $('#t_sum_total_avg').text(sumTotalAvg);
+                } else {
+                    $('#transactionBody').append('<tr><td colspan="19" class="text-center text-muted">暂无数据</td></tr>');
+                }
+                updateColumnVisibility();
+                $('#loading').hide();
+            },
+            error: function(error) {
+                console.error('获取交易时间汇总数据失败:', error);
+                $('#transactionBody').append('<tr><td colspan="19" class="text-center text-danger">数据加载失败，请重试</td></tr>');
+                $('#loading').hide();
+            }
         });
-        
-        $('#projects').val(selectedIds.join(','));
-        
-        if (selectedNames.length === 0) {
-            $('#selectedProjectsText').text('选择项目...');
-        } else if (selectedNames.length === 1) {
-            $('#selectedProjectsText').text(selectedNames[0]);
-        } else {
-            $('#selectedProjectsText').text(`已选择 ${selectedNames.length} 个项目`);
-        }
     }
-    
-    function updateSelectAllState() {
-        const totalVisible = $('.project-checkbox:visible').length;
-        const checkedVisible = $('.project-checkbox:visible:checked').length;
-        
-        if (checkedVisible === 0) {
-            $('#selectAllProjects').prop('indeterminate', false).prop('checked', false);
-        } else if (checkedVisible === totalVisible) {
-            $('#selectAllProjects').prop('indeterminate', false).prop('checked', true);
-        } else {
-            $('#selectAllProjects').prop('indeterminate', true);
-        }
-    }
-    
-    // 当筛选条件改变时，更新项目列表
-    $('select:not(#projects)').change(function() {
-      updateProjectsList();
-    });
-    
-    // 初始化页面时不自动更新项目列表，保留服务器端渲染的初始项目
-    // updateProjectsList();
 
-    // 应用筛选按钮点击事件
+    // ---------------------------------------------------------------- //
+    // 事件绑定和初始调用区域
+    // ---------------------------------------------------------------- //
+
+    // 绑定控制列显隐的复选框事件
+    $('#toggleQty, #toggleAmt, #toggleAvg').on('change', updateColumnVisibility);
+
+    // 绑定筛选下拉框的改变事件，用于更新项目列表
+    $('#secondary_unit, #province, #region, #power_type, #investment_scope, #project_nature, #is_uhv_support, #has_subsidy').on('changed.bs.select', function() {
+        updateProjectsList();
+    });
+
+    // “应用筛选”按钮点击事件
     $('#applyFilter').click(function() {
-      // 同时计算两个表的值
-      fetchAnalysisData();
-      fetchTransactionTimeData();
+        fetchAnalysisData();
+        fetchTransactionTimeData();
     });
 
-    // 页面加载时自动应用筛选
+    // “重置”按钮点击事件
+    $('button[type="reset"]').click(function() {
+        // 清空所有 selectpicker 的值
+        $('.selectpicker').selectpicker('val', '');
+        // 使用延时确保原生重置先生效
+        setTimeout(function() {
+            // 更新项目列表，并在成功后全选所有新项目
+            updateProjectsList().then(function() {
+                $('#projects').selectpicker('selectAll');
+            });
+        }, 100);
+    });
+
+    // 页面首次加载时，默认全选所有项目，然后获取数据
+    $('#projects').selectpicker('selectAll');
     fetchAnalysisData();
     fetchTransactionTimeData();
 
-    // 重置按钮点击事件
-    $('button[type="reset"]').click(function() {
-      setTimeout(function() {
-        updateProjectsList();
-        // 确保重置后项目列表也是全选状态
-        setTimeout(function() {
-          $('.project-checkbox').prop('checked', true);
-          updateSelectedProjects();
-          updateSelectAllState();
-        }, 200);
-      }, 100);
-    });
-
-    // 更新项目列表函数
-    function updateProjectsList() {
-      const filters = {
-        secondary_unit: $('#secondary_unit').val(),
-        province: $('#province').val(),
-        region: $('#region').val(),
-        power_type: $('#power_type').val(),
-        investment_scope: $('#investment_scope').val(),
-        project_nature: $('#project_nature').val(),
-        is_uhv_support: $('#is_uhv_support').val(),
-        has_subsidy: $('#has_subsidy').val()
-      };
-      
-      $.ajax({
-        url: '/dashboard/get_filtered_projects',
-        type: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify(filters),
-        success: function(response) {
-          console.log('AJAX成功，收到响应:', response);
-          console.log('项目数量:', response.projects ? response.projects.length : 0);
-          
-          // 清空并重新填充项目列表
-          $('#projectsList').empty();
-          
-          if (response.projects && response.projects.length > 0) {
-            response.projects.forEach(function(project) {
-              // 默认全选所有项目
-              const projectItem = `
-                <div class="dropdown-item-text project-item">
-                  <div class="form-check">
-                    <input class="form-check-input project-checkbox" type="checkbox" value="${project.id}" id="project_${project.id}" checked>
-                    <label class="form-check-label" for="project_${project.id}">${project.project_name}</label>
-                  </div>
-                </div>
-              `;
-              $('#projectsList').append(projectItem);
-            });
-            console.log('已添加', response.projects.length, '个项目选项，默认全选');
-            
-            // 重新绑定事件
-            $('.project-checkbox').off('change').on('change', function() {
-              updateSelectedProjects();
-              updateSelectAllState();
-            });
-            
-            // 更新选中状态显示
-            updateSelectedProjects();
-            updateSelectAllState();
-          } else {
-            $('#projectsList').append('<div class="dropdown-item-text text-muted">没有符合条件的项目</div>');
-            console.log('没有项目数据或项目列表为空');
-            $('#selectedProjectsText').text('选择项目...');
-            $('#projects').val('');
-          }
-        },
-        error: function(xhr, status, error) {
-          console.error('AJAX请求失败:', status, error);
-          console.error('响应状态:', xhr.status);
-          console.error('响应文本:', xhr.responseText);
-        }
-      });
-    }
-
-    // 获取分析数据函数
-    function fetchAnalysisData() {
-      const projectIds = $('#projects').val().split(',').filter(id => id);
-      const filters = {
-        secondary_unit: $('#secondary_unit').val(),
-        province: $('#province').val(),
-        region: $('#region').val(),
-        power_type: $('#power_type').val(),
-        investment_scope: $('#investment_scope').val(),
-        project_nature: $('#project_nature').val(),
-        is_uhv_support: $('#is_uhv_support').val(),
-        has_subsidy: $('#has_subsidy').val(),
-        projects: projectIds,
-        production_start_month: $('#production_start_month').val(),
-        production_end_month: $('#production_end_month').val(),
-        transaction_start_date: $('#transaction_start_date').val(),
-        transaction_end_date: $('#transaction_end_date').val()
-      };
-
-      $('#loading').show();
-      $('#resultBody').empty();
-      
-      $.ajax({
-        url: '{{ url_for("dashboard.get_analysis_data") }}',
-        type: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify(filters),
-        success: function(response) {
-          console.log('获取到分析数据:', response);
-          $('#resultBody').empty();
-          
-          if (response && response.length > 0) {
-            // 创建汇总数据对象
-            let summaryData = {
-              ordinary_green: 0,
-              green_green: 0,
-              issued_platform_sold: 0,
-              unilateral_qty: 0,
-              unilateral_amt: 0,
-              online_qty: 0,
-              online_amt: 0,
-              offline_qty: 0,
-              offline_amt: 0,
-              beijing_qty: 0,
-              beijing_amt: 0,
-              guangzhou_qty: 0,
-              guangzhou_amt: 0
-            };
-            
-            // 先添加汇总行
-            const summaryRow = `
-              <tr class="table-secondary fw-bold">
-                <td>汇总</td>
-                <td id="sum_total_issued">0</td>
-                <td id="sum_ordinary_green">0</td>
-                <td id="sum_green_green">0</td>
-                <td id="sum_issued_platform_sold">0</td>
-                <td id="sum_inventory">0</td>
-                <td id="sum_unilateral_qty" class="col-qty">0</td>
-                <td id="sum_unilateral_amt" class="col-amt">0</td>
-                <td id="sum_unilateral_avg" class="col-avg">0</td>
-                <td id="sum_online_qty" class="col-qty">0</td>
-                <td id="sum_online_amt" class="col-amt">0</td>
-                <td id="sum_online_avg" class="col-avg">0</td>
-                <td id="sum_offline_qty" class="col-qty">0</td>
-                <td id="sum_offline_amt" class="col-amt">0</td>
-                <td id="sum_offline_avg" class="col-avg">0</td>
-                <td id="sum_beijing_qty" class="col-qty">0</td>
-                <td id="sum_beijing_amt" class="col-amt">0</td>
-                <td id="sum_beijing_avg" class="col-avg">0</td>
-                <td id="sum_guangzhou_qty" class="col-qty">0</td>
-                <td id="sum_guangzhou_amt" class="col-amt">0</td>
-                <td id="sum_guangzhou_avg" class="col-avg">0</td>
-                <td id="sum_total_qty" class="col-qty">0</td>
-                <td id="sum_total_amt" class="col-amt">0</td>
-                <td id="sum_total_avg" class="col-avg">0</td>
-                <td id="sum_issued_ratio">0.0%</td>
-                <td id="sum_trading_ratio">0.0%</td>
-              </tr>
-            `;
-            $('#resultBody').append(summaryRow);
-            
-            // 添加各月份数据行并累计汇总数据
-            response.forEach(function(row) {
-              // 计算交易平台售出汇总
-              const totalQty = (parseFloat(row.unilateral_qty) || 0) + 
-                              (parseFloat(row.online_qty) || 0) + 
-                              (parseFloat(row.offline_qty) || 0) + 
-                              (parseFloat(row.beijing_qty) || 0) + 
-                              (parseFloat(row.guangzhou_qty) || 0);
-              
-              const totalAmt = (parseFloat(row.unilateral_amt) || 0) + 
-                              (parseFloat(row.online_amt) || 0) + 
-                              (parseFloat(row.offline_amt) || 0) + 
-                              (parseFloat(row.beijing_amt) || 0) + 
-                              (parseFloat(row.guangzhou_amt) || 0);
-              
-              const totalAvg = totalQty > 0 ? (totalAmt / totalQty).toFixed(2) : 0;
-              
-              // 计算总核发量
-              const ordinaryGreen = parseFloat(row.ordinary_green) || 0;
-              const greenGreen = parseFloat(row.green_green) || 0;
-              const totalIssued = ordinaryGreen + greenGreen;
-              
-              // 计算库存量
-              const inventory = ordinaryGreen - (parseFloat(row.issued_platform_sold) || 0);
-              
-              // 计算售出比例
-              const issuedRatio = ordinaryGreen > 0 ? ((parseFloat(row.issued_platform_sold) || 0) / ordinaryGreen * 100).toFixed(1) + '%' : '0.0%';
-              const tradingRatio = ordinaryGreen > 0 ? (totalQty / ordinaryGreen * 100).toFixed(1) + '%' : '0.0%';
-              
-              const tr = `
-                <tr>
-                  <td>${row.production_year_month || ''}</td>
-                  <td>${Math.round(totalIssued)}</td>
-                  <td>${row.ordinary_green || 0}</td>
-                  <td>${row.green_green || 0}</td>
-                  <td>${row.issued_platform_sold || 0}</td>
-                  <td>${Math.round(inventory)}</td>
-                  <td class="col-qty">${row.unilateral_qty || 0}</td>
-                  <td class="col-amt">${row.unilateral_amt || 0}</td>
-                  <td class="col-avg">${row.unilateral_avg || 0}</td>
-                  <td class="col-qty">${row.online_qty || 0}</td>
-                  <td class="col-amt">${row.online_amt || 0}</td>
-                  <td class="col-avg">${row.online_avg || 0}</td>
-                  <td class="col-qty">${row.offline_qty || 0}</td>
-                  <td class="col-amt">${row.offline_amt || 0}</td>
-                  <td class="col-avg">${row.offline_avg || 0}</td>
-                  <td class="col-qty">${row.beijing_qty || 0}</td>
-                  <td class="col-amt">${row.beijing_amt || 0}</td>
-                  <td class="col-avg">${row.beijing_avg || 0}</td>
-                  <td class="col-qty">${row.guangzhou_qty || 0}</td>
-                  <td class="col-amt">${row.guangzhou_amt || 0}</td>
-                  <td class="col-avg">${row.guangzhou_avg || 0}</td>
-                  <td class="col-qty">${Math.round(totalQty)}</td>
-                  <td class="col-amt">${totalAmt.toFixed(2)}</td>
-                  <td class="col-avg">${totalAvg}</td>
-                  <td>${issuedRatio}</td>
-                  <td>${tradingRatio}</td>
-                </tr>
-              `;
-              $('#resultBody').append(tr);
-              
-              // 累加汇总数据
-              summaryData.ordinary_green += parseFloat(row.ordinary_green) || 0;
-              summaryData.green_green += parseFloat(row.green_green) || 0;
-              summaryData.issued_platform_sold += parseFloat(row.issued_platform_sold) || 0;
-              summaryData.unilateral_qty += parseFloat(row.unilateral_qty) || 0;
-              summaryData.unilateral_amt += parseFloat(row.unilateral_amt) || 0;
-              summaryData.online_qty += parseFloat(row.online_qty) || 0;
-              summaryData.online_amt += parseFloat(row.online_amt) || 0;
-              summaryData.offline_qty += parseFloat(row.offline_qty) || 0;
-              summaryData.offline_amt += parseFloat(row.offline_amt) || 0;
-              summaryData.beijing_qty += parseFloat(row.beijing_qty) || 0;
-              summaryData.beijing_amt += parseFloat(row.beijing_amt) || 0;
-              summaryData.guangzhou_qty += parseFloat(row.guangzhou_qty) || 0;
-              summaryData.guangzhou_amt += parseFloat(row.guangzhou_amt) || 0;
-            });
-            
-            // 计算汇总行的均价和比例
-            const sumUnilateralAvg = summaryData.unilateral_qty > 0 ? (summaryData.unilateral_amt / summaryData.unilateral_qty).toFixed(2) : 0;
-            const sumOnlineAvg = summaryData.online_qty > 0 ? (summaryData.online_amt / summaryData.online_qty).toFixed(2) : 0;
-            const sumOfflineAvg = summaryData.offline_qty > 0 ? (summaryData.offline_amt / summaryData.offline_qty).toFixed(2) : 0;
-            const sumBeijingAvg = summaryData.beijing_qty > 0 ? (summaryData.beijing_amt / summaryData.beijing_qty).toFixed(2) : 0;
-            const sumGuangzhouAvg = summaryData.guangzhou_qty > 0 ? (summaryData.guangzhou_amt / summaryData.guangzhou_qty).toFixed(2) : 0;
-            
-            // 计算交易平台售出汇总
-            const sumTotalQty = summaryData.unilateral_qty + summaryData.online_qty + summaryData.offline_qty + summaryData.beijing_qty + summaryData.guangzhou_qty;
-            const sumTotalAmt = summaryData.unilateral_amt + summaryData.online_amt + summaryData.offline_amt + summaryData.beijing_amt + summaryData.guangzhou_amt;
-            const sumTotalAvg = sumTotalQty > 0 ? (sumTotalAmt / sumTotalQty).toFixed(2) : 0;
-            
-            // 计算售出比例
-            const sumIssuedRatio = summaryData.ordinary_green > 0 ? ((summaryData.issued_platform_sold / summaryData.ordinary_green) * 100).toFixed(1) + '%' : '0.0%';
-            const sumTradingRatio = summaryData.ordinary_green > 0 ? ((sumTotalQty / summaryData.ordinary_green) * 100).toFixed(1) + '%' : '0.0%';
-            
-            // 计算总核发量汇总
-            const sumTotalIssued = summaryData.ordinary_green + summaryData.green_green;
-            
-            // 计算库存量汇总
-            const sumInventory = summaryData.ordinary_green - summaryData.issued_platform_sold;
-            
-            // 更新汇总行的数据
-            $('#sum_total_issued').text(Math.round(sumTotalIssued));
-            $('#sum_ordinary_green').text(Math.round(summaryData.ordinary_green));
-            $('#sum_green_green').text(Math.round(summaryData.green_green));
-            $('#sum_issued_platform_sold').text(Math.round(summaryData.issued_platform_sold));
-            $('#sum_inventory').text(Math.round(sumInventory));
-            $('#sum_unilateral_qty').text(Math.round(summaryData.unilateral_qty));
-            $('#sum_unilateral_amt').text(summaryData.unilateral_amt.toFixed(2));
-            $('#sum_unilateral_avg').text(sumUnilateralAvg);
-            $('#sum_online_qty').text(Math.round(summaryData.online_qty));
-            $('#sum_online_amt').text(summaryData.online_amt.toFixed(2));
-            $('#sum_online_avg').text(sumOnlineAvg);
-            $('#sum_offline_qty').text(Math.round(summaryData.offline_qty));
-            $('#sum_offline_amt').text(summaryData.offline_amt.toFixed(2));
-            $('#sum_offline_avg').text(sumOfflineAvg);
-            $('#sum_beijing_qty').text(Math.round(summaryData.beijing_qty));
-            $('#sum_beijing_amt').text(summaryData.beijing_amt.toFixed(2));
-            $('#sum_beijing_avg').text(sumBeijingAvg);
-            $('#sum_guangzhou_qty').text(Math.round(summaryData.guangzhou_qty));
-            $('#sum_guangzhou_amt').text(summaryData.guangzhou_amt.toFixed(2));
-            $('#sum_guangzhou_avg').text(sumGuangzhouAvg);
-            $('#sum_total_qty').text(Math.round(sumTotalQty));
-            $('#sum_total_amt').text(sumTotalAmt.toFixed(2));
-            $('#sum_total_avg').text(sumTotalAvg);
-            $('#sum_issued_ratio').text(sumIssuedRatio);
-            $('#sum_trading_ratio').text(sumTradingRatio);
-          } else {
-            $('#resultBody').append('<tr><td colspan="26" class="text-center text-muted">暂无数据</td></tr>');
-          }
-
-          updateColumnVisibility();
-          $('#loading').hide();
-        },
-        error: function(error) {
-          console.error('获取分析数据失败:', error);
-          $('#resultBody').append('<tr><td colspan="26" class="text-center text-danger">数据加载失败，请重试</td></tr>');
-          $('#loading').hide();
-        }
-      });
-    }
-  });
+});
 </script>
 
 {% endblock %}

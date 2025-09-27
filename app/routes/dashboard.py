@@ -1293,11 +1293,13 @@ def get_filtered_projects():
     print(f'Received filters: {filters}')
     query = Project.query
     for key, value in filters.items():
-        if value and value != '--所有--':
+        if value:  # 检查 value 是否非空
             if key in ['is_uhv_support', 'has_subsidy']:
-                query = query.filter(getattr(Project, key) == (value == '1'))
+                # 转换 '1'/'0' 列表为布尔值列表
+                bool_values = [v == '1' for v in value]
+                query = query.filter(getattr(Project, key).in_(bool_values))
             else:
-                query = query.filter(getattr(Project, key) == value)
+                query = query.filter(getattr(Project, key).in_(value)) # 使用 in_() 处理列表
     if not current_user.is_admin:
         query = query.filter(Project.secondary_unit == current_user.username)
     projects = query.order_by(Project.project_name).all()
@@ -1321,11 +1323,12 @@ def get_analysis_data():
     
     # 应用筛选条件
     for key, value in filters.items():
-        if key not in ['projects', 'production_start_month', 'production_end_month', 'transaction_start_date', 'transaction_end_date'] and value and value != '--所有--':
+        if key not in ['projects', 'production_start_month', 'production_end_month', 'transaction_start_date', 'transaction_end_date'] and value:
             if key in ['is_uhv_support', 'has_subsidy']:
-                query = query.filter(getattr(Project, key) == (value == '1'))
+                bool_values = [v == '1' for v in value]
+                query = query.filter(getattr(Project, key).in_(bool_values))
             else:
-                query = query.filter(getattr(Project, key) == value)
+                query = query.filter(getattr(Project, key).in_(value))
     
     # 处理项目筛选
     project_ids = filters.get('projects', [])
@@ -1599,11 +1602,12 @@ def get_transaction_time_data():
     
     # 应用筛选条件
     for key, value in filters.items():
-        if key not in ['projects', 'production_start_month', 'production_end_month', 'transaction_start_date', 'transaction_end_date'] and value and value != '--所有--':
+        if key not in ['projects', 'production_start_month', 'production_end_month', 'transaction_start_date', 'transaction_end_date'] and value:
             if key in ['is_uhv_support', 'has_subsidy']:
-                query = query.filter(getattr(Project, key) == (value == '1'))
+                bool_values = [v == '1' for v in value]
+                query = query.filter(getattr(Project, key).in_(bool_values))
             else:
-                query = query.filter(getattr(Project, key) == value)
+                query = query.filter(getattr(Project, key).in_(value))
     
     # 处理项目筛选
     project_ids = filters.get('projects', [])
